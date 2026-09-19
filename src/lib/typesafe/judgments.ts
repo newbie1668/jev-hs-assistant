@@ -233,3 +233,91 @@ async function withTiming<T>(
 ): Promise<{ result: T; startedAt: string; finishedAt: string; latencyMs: number }> {
   const startedAt = new Date().toISOString();
   const t0 = performance.now();
+  const result = await fn();
+  const finishedAt = new Date().toISOString();
+  const latencyMs = Math.max(0, performance.now() - t0);
+  return { result, startedAt, finishedAt, latencyMs };
+}
+
+function createMockClient(trace?: TraceCollector): JudgmentClient {
+  const mode = "mock" as const;
+  return {
+    mode,
+    async chooseChild(state, options) {
+      const instructions =
+        "Which direct child HS node best matches the goods description? (mock token-overlap)";
+      const timed = await withTiming(async () => {
+        if (options.length === 1) {
+          const only = options[0]!.id;
+          return {
+            choice: only,
+            confidence: 1,
+            probabilities: { [only]: 1 } as Record<string, number>,
+            singleton: true as const,
+          };
+        }
+        const tokens = tokenize(state.goodsDescription);
+        const scores = options.map((opt) =>
+          overlapScore(
+            tokens,
+            `${opt.id} ${opt.label}`,
+            state.goodsDescription,
+          ),
+        );
+        const soft = softmax(scores);
+        const probabilities: Record<string, number> = {};
+        options.forEach((opt, i) => {
+          probabilities[opt.id] = soft[i] ?? 0;
+        });
+        const ranked = [...options].sort(
+          (a, b) => (probabilities[b.id] ?? 0) - (probabilities[a.id] ?? 0),
+        );
+        return {
+          choice: ranked[0]!.id,
+          confidence: confidenceFromProbs(probabilities),
+          probabilities,
+          singleton: false as const,
+        };
+      });
+
+      const { result, startedAt, finishedAt, latencyMs } = timed;
+      const cost = costFieldsForStep(mode, null);
+      const topProb = result.probabilities[result.choice] ?? 0;
+      trace?.addStep({
+        id: nextStepId("child"),
+        kind: result.singleton ? "skipped_singleton" : "choice_child",
+        label: result.singleton
+          ? `Singleton child @ ${state.parentCode}`
+          : `Choice @ ${state.parentCode} → ${result.choice}`,
+        mode,
+        latencyMs,
+        startedAt,
+        finishedAt,
+        model: null,
+        usage: null,
+        ...cost,
+        request: {
+          endpoint: "mock://local/chooseChild",
+          model: null,
+          questionType: result.singleton ? "none" : "choice",
+          instructions,
+          optionCount: options.length,
+          parentCode: state.parentCode,
+          state: previewState({
+            goods_description: state.goodsDescription,
+            current_parent: {
+              code: state.parentCode,
+              description: state.parentDescription,
+            },
+            ancestry: state.ancestry,
+          }),
+          criteriaPreview: options.slice(0, 12).map((o) => ({
+            id: o.id,
+            label: truncateText(o.label, 80),
+          })),
+        },
+        response: {
+          choice: result.choice,
+          confidence: result.confidence,
+          topProbability: topProb,
+          probabilitiesTop: Object.entr
