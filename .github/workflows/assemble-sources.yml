@@ -12,45 +12,56 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Concatenate source chunks
+      - name: Assemble hex and zlib parts
         run: |
-          set -euo pipefail
-          assemble_txt() {
-            local dir="$1" dest="$2"
-            if [ ! -d "$dir" ]; then return 0; fi
-            shopt -s nullglob
-            parts=("$dir"/src-*.txt)
-            if [ ${#parts[@]} -eq 0 ]; then return 0; fi
-            mkdir -p "$(dirname "$dest")"
-            cat "${parts[@]}" > "$dest"
-            echo "Wrote $dest ($(wc -c < "$dest") bytes)"
-          }
-          assemble_txt build-parts/judgments src/lib/typesafe/judgments.ts
-          assemble_txt build-parts/hs-assistant src/components/hs-assistant.tsx
           python3 << 'PY'
-          import base64, zlib, pathlib, hashlib
-          for name, dest in [
-            ("package-lock", "package-lock.json"),
-            ("harmonized-system", "data/hs2022/harmonized-system.csv"),
+          import pathlib, hashlib, base64, zlib
+
+          def assemble_hex(dir_name, dest):
+              d = pathlib.Path("build-parts") / dir_name
+              parts = sorted(d.glob("hex-*.txt"))
+              if not parts:
+                  return None
+              data = bytes.fromhex("".join(p.read_text().strip() for p in parts))
+              out = pathlib.Path(dest)
+              out.parent.mkdir(parents=True, exist_ok=True)
+              out.write_bytes(data)
+              print(dir_name, "->", dest, len(data), hashlib.sha256(data).hexdigest()[:12])
+              return dest
+
+          def assemble_zlib(dir_name, dest):
+              d = pathlib.Path("build-parts") / dir_name
+              parts = sorted(d.glob("*.zlib.b64"))
+              if not parts:
+                  return None
+              b64 = "".join(p.read_text().strip() for p in parts)
+              data = zlib.decompress(base64.b64decode(b64))
+              out = pathlib.Path(dest)
+              out.parent.mkdir(parents=True, exist_ok=True)
+              out.write_bytes(data)
+              print(dir_name, "->", dest, len(data), hashlib.sha256(data).hexdigest()[:12])
+              return dest
+
+          changed = []
+          for name, dest, kind in [
+              ("judgments", "src/lib/typesafe/judgments.ts", "hex"),
+              ("hs-assistant", "src/components/hs-assistant.tsx", "hex"),
+              ("package-lock", "package-lock.json", "zlib"),
+              ("harmonized-system", "data/hs2022/harmonized-system.csv", "zlib"),
           ]:
-            d = pathlib.Path("build-parts") / name
-            if not d.exists():
-              continue
-            parts = sorted(d.glob("*.zlib.b64"))
-            if not parts:
-              continue
-            b64 = "".join(p.read_text().strip() for p in parts)
-            data = zlib.decompress(base64.b64decode(b64))
-            out = pathlib.Path(dest)
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_bytes(data)
-            print(name, "->", dest, len(data), hashlib.sha256(data).hexdigest()[:12])
+              fn = assemble_hex if kind == "hex" else assemble_zlib
+              r = fn(name, dest)
+              if r:
+                  changed.append(r)
+          pathlib.Path("/tmp/changed.txt").write_text("\n".join(changed))
           PY
-      - name: Commit
+      - name: Commit assembled files
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/lib/typesafe/judgments.ts src/components/hs-assistant.tsx package-lock.json data/hs2022/harmonized-system.csv || true
+          mapfile -t files < /tmp/changed.txt || true
+          if [ ${#files[@]} -eq 0 ]; then echo none; exit 0; fi
+          git add "${files[@]}"
           if git diff --cached --quiet; then echo no changes; exit 0; fi
-          git commit -m "Assemble full source files from build-parts chunks"
+          git commit -m "Assemble full source files from build-parts"
           git push
