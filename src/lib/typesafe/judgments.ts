@@ -182,6 +182,58 @@ function overlapScore(
       candidate: /shirts; men's|6105/i,
       boost: -4,
     },
+    // Photographic / camera gear (incl. underwater housings) → ch. 90 / 9006
+    {
+      query:
+        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|photographic|digital\s+camera|\bx-?t\d\b|\bdslr\b|mirrorless|canon|nikon/i,
+      candidate: /^90\s|optical, photographic, cinematographic/i,
+      boost: 14,
+    },
+    {
+      query:
+        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|photographic|digital\s+camera|\bx-?t\d\b|\bdslr\b|mirrorless/i,
+      candidate: /^9006\s|cameras, photographic \(excluding/i,
+      boost: 16,
+    },
+    {
+      query:
+        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|\bx-?t\d\b/i,
+      candidate: /^900691\s|cameras, photographic.{0,60}parts and accessories/i,
+      boost: 14,
+    },
+    {
+      query:
+        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|\bx-?t\d\b/i,
+      candidate: /photographic flashlight|900699|90066/i,
+      boost: -8,
+    },
+    {
+      query:
+        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|photographic|\bx-?t\d\b/i,
+      candidate:
+        /laboratory apparatus|negatoscopes|projection screens|9010|parts and accessories n\.e\.c\. in chapter 90|9033/i,
+      boost: -12,
+    },
+    {
+      query:
+        /underwater.{0,30}camera|camera.{0,30}underwater|specially designed for underwater/i,
+      candidate: /specially designed for underwater|900630/i,
+      boost: 7,
+    },
+    {
+      query:
+        /underwater\s+housing|camera\s+housing|fujifilm|photographic|digital\s+camera|\bx-?t\d\b/i,
+      candidate:
+        /telephone|smartphone|transmission or reception of voice|8517|85176|communication apparatus|sound or video recording|8522|8521|8525/i,
+      boost: -14,
+    },
+    {
+      query:
+        /underwater\s+housing|camera\s+housing|fujifilm|photographic|\bx-?t\d\b/i,
+      candidate:
+        /electrical machinery|vehicles; other than railway|musical instruments|arms and ammunition|toys, games|automatic data processing|8471/i,
+      boost: -10,
+    },
   ];
   for (const cue of cues) {
     if (cue.query.test(raw) && cue.candidate.test(lower)) {
@@ -339,8 +391,6 @@ function createMockClient(trace?: TraceCollector): JudgmentClient {
       };
     },
     async verifyMatch(state) {
-      const instructions =
-        "Does the official HS description reasonably match the goods as stated? (mock)";
       const timed = await withTiming(async () => {
         const tokens = tokenize(state.goodsDescription);
         const score = overlapScore(
@@ -357,6 +407,8 @@ function createMockClient(trace?: TraceCollector): JudgmentClient {
       });
       const { result, startedAt, finishedAt, latencyMs } = timed;
       const cost = costFieldsForStep(mode, null);
+      const instructions =
+        "Does the official HS description reasonably match the goods as stated? (mock — product wording only; ignore printed HS codes)";
       trace?.addStep({
         id: nextStepId("verify"),
         kind: "verification_noul",
@@ -492,7 +544,7 @@ function createTypeSafeClient(trace?: TraceCollector): JudgmentClient {
     mode,
     async chooseChild(state, options) {
       const instructions =
-        "Which direct child HS node best matches the goods description? Choose only among the listed legal children; do not invent codes.";
+        "Which direct child HS node best matches the goods description? Classify from the product / goods wording only — ignore any HS, harmonised, or tariff codes printed on the document (those may be wrong). Choose only among the listed legal children; do not invent codes.";
 
       if (options.length === 1) {
         const only = options[0]!;
@@ -555,6 +607,8 @@ function createTypeSafeClient(trace?: TraceCollector): JudgmentClient {
           },
           ancestry: state.ancestry,
           task: "Select the single best Harmonized System child node for these goods.",
+          policy:
+            "Classify from goods / product wording only. Ignore any HS, harmonised, or tariff codes printed on the document — they may be wrong.",
         },
         questions: {
           child: choice(instructions, criteria),
@@ -623,7 +677,7 @@ function createTypeSafeClient(trace?: TraceCollector): JudgmentClient {
     },
     async verifyMatch(state) {
       const instructions =
-        "Does the official HS description reasonably match the goods as stated?";
+        "Does the official HS description reasonably match the goods as stated? Judge from the product wording only; printed HS / harmonised codes on the document may be incorrect and must not decide the match.";
       const requestPayload = {
         model,
         state: {
