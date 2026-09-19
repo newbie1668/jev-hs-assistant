@@ -25,7 +25,7 @@ export interface PdfExtractResult {
 
 /**
  * Extract text from a text-based PDF. Scanned/image-only PDFs yield empty
- * text — OCR is intentionally out of scope.
+ * text — upload a photo of the page for image OCR, or paste the text.
  */
 export async function extractTextFromPdf(
   data: Uint8Array,
@@ -61,7 +61,7 @@ export async function extractTextFromPdf(
 
     if (!text) {
       throw new PdfExtractError(
-        "No extractable text found. This PDF may be a scan or image-only — OCR is not supported yet. Upload a text-based PDF, a .txt file, or paste the shipment text.",
+        "No extractable text found. This PDF may be a scan or image-only. Upload a photo (png/jpg/webp) for OCR, a text-based PDF, a .txt file, or paste the shipment text.",
         "empty",
       );
     }
