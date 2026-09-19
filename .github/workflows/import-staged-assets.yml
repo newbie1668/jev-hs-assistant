@@ -1,0 +1,42 @@
+name: Import staged assets
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/import-staged-assets.yml'
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and place files
+        run: |
+          set -euo pipefail
+          download() {
+            local page="$1" dest="$2"
+            html=$(curl -sSL "$page")
+            url=$(printf '%s' "$html" | grep -oE 'https://tmpfiles.org/dl/[0-9]+\.[a-f0-9]+/[^"<> ]+' | head -1)
+            echo "Fetching $dest from $url"
+            mkdir -p "$(dirname "$dest")"
+            curl -sSL "$url" -o "$dest"
+            wc -c "$dest"
+          }
+          download "https://tmpfiles.org/wYwtNF8uFVoq/part1_raw.csv" "data/hs2022/harmonized-system-part1.csv"
+          download "https://tmpfiles.org/wwwvNx8VFLJB/part2_raw.csv" "data/hs2022/harmonized-system-part2.csv"
+          download "https://tmpfiles.org/w7wHNh8uF7WM/package-lock_raw.json" "package-lock.json"
+      - name: Verify sizes and headers
+        run: |
+          set -euo pipefail
+          test $(wc -c < data/hs2022/harmonized-system-part1.csv) -eq 426598
+          test $(wc -c < data/hs2022/harmonized-system-part2.csv) -eq 424018
+          test $(wc -c < package-lock.json) -eq 345558
+          head -1 data/hs2022/harmonized-system-part1.csv | grep -q section
+      - name: Commit
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/hs2022/harmonized-system-part1.csv data/hs2022/harmonized-system-part2.csv package-lock.json
+          if git diff --staged --quiet; then echo "No changes"; else git commit -m "Add HS2022 CSV parts and package-lock.json" && git push; fi
