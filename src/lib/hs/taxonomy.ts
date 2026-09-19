@@ -41,11 +41,31 @@ function parseNodes(csv: string): HsNode[] {
     }));
 }
 
+function readHsCsv(): string {
+  const dir = dataDir();
+  const fullPath = path.join(dir, "harmonized-system.csv");
+  if (fs.existsSync(fullPath)) {
+    return fs.readFileSync(fullPath, "utf8");
+  }
+
+  const part1Path = path.join(dir, "harmonized-system-part1.csv");
+  const part2Path = path.join(dir, "harmonized-system-part2.csv");
+  if (fs.existsSync(part1Path) && fs.existsSync(part2Path)) {
+    const part1 = fs.readFileSync(part1Path, "utf8");
+    const part2 = fs.readFileSync(part2Path, "utf8");
+    const part2Body = part2.split(/\r?\n/).slice(1).join("\n");
+    return part1.trimEnd() + "\n" + part2Body.trim() + "\n";
+  }
+
+  throw new Error(
+    `HS taxonomy CSV not found under ${dir} (expected harmonized-system.csv or part1/part2)`,
+  );
+}
+
 export function loadHsTaxonomy(): HsTaxonomy {
   if (cached) return cached;
 
-  const csvPath = path.join(dataDir(), "harmonized-system.csv");
-  const csv = fs.readFileSync(csvPath, "utf8");
+  const csv = readHsCsv();
   const nodes = parseNodes(csv);
 
   const byCode = new Map<string, HsNode>();
