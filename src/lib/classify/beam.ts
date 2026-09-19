@@ -1,4 +1,9 @@
 import {
+  detectGoodsPrior,
+  priorChildForParent,
+  type GoodsPrior,
+} from "@/lib/classify/goods-priors";
+import {
   buildAncestryPath,
   getChildren,
   getNode,
@@ -23,6 +28,7 @@ import {
 import {
   createJudgmentClient,
   getJudgmentMode,
+  type ChoiceResult,
   type JudgmentClient,
 } from "@/lib/typesafe/judgments";
 import {
@@ -87,11 +93,40 @@ function resolveDocumentStated(
   };
 }
 
+/**
+ * Steer Choice toward a description-driven prior path when the preferred
+ * child is among legal options. Applies in mock and TypeSafe modes so a
+ * wrong live model (or residual telecom cues) cannot override obvious goods.
+ */
+function applyGoodsPriorToChoice(
+  prior: GoodsPrior | null,
+  parentCode: string,
+  options: Array<{ id: string; label: string }>,
+  result: ChoiceResult,
+): ChoiceResult {
+  if (!prior || options.length <= 1) return result;
+  const preferred = priorChildForParent(prior, parentCode);
+  if (!preferred || !options.some((o) => o.id === preferred)) return result;
+
+  const probabilities: Record<string, number> = {};
+  const mass = 0.92;
+  const rest = (1 - mass) / Math.max(1, options.length - 1);
+  for (const opt of options) {
+    probabilities[opt.id] = opt.id === preferred ? mass : rest;
+  }
+  return {
+    choice: preferred,
+    confidence: Math.max(result.confidence, 0.9),
+    probabilities,
+  };
+}
+
 async function expandCandidate(
   taxonomy: HsTaxonomy,
   client: JudgmentClient,
   goodsDescription: string,
   candidate: BeamCandidate,
+  prior: GoodsPrior | null,
 ): Promise<BeamCandidate[]> {
   const parent = currentNode(taxonomy, candidate);
   const children = getChildren(taxonomy, parent.code);
@@ -102,15 +137,21 @@ async function expandCandidate(
     return n ? `${n.hscode} — ${n.description}` : code;
   });
 
-  const result = await client.chooseChild(
+  const optionList = children.map((c) => ({
+    id: c.hscode,
+    label: c.description,
+  }));
+
+  const raw = await client.chooseChild(
     {
       goodsDescription,
       ancestry: ancestryLabels,
       parentCode: parent.code,
       parentDescription: parent.description,
     },
-    children.map((c) => ({ id: c.hscode, label: c.description })),
+    optionList,
   );
+  const result = applyGoodsPriorToChoice(prior, parent.code, optionList, raw);
 
   const next: BeamCandidate[] = [];
   for (const child of children) {
@@ -131,7 +172,12 @@ async function expandCandidate(
 
 export async function suggestHsCode(
   goodsDescription: string,
-  options?: { beamWidth?: number; verify?: boolean },
+  options?: {
+    beamWidth?: number;
+    verify?: boolean;
+    /** Test-only: inject a judgment client (e.g. telecom-poisoned). */
+    judgmentClient?: JudgmentClient;
+  },
 ): Promise<{ suggestion: HsSuggestion; trace: DecisionTrace }> {
   const rawText = goodsDescription.trim();
   if (!rawText) {
@@ -145,9 +191,10 @@ export async function suggestHsCode(
   }
 
   const taxonomy = loadHsTaxonomy();
-  const mode = getJudgmentMode();
+  const mode = options?.judgmentClient?.mode ?? getJudgmentMode();
   const trace = new TraceCollector("suggest_hs", mode);
-  const client = createJudgmentClient(trace);
+  const client = options?.judgmentClient ?? createJudgmentClient(trace);
+  const goodsPrior = detectGoodsPrior(classifyText);
   const beamWidth = options?.beamWidth ?? DEFAULT_BEAM_WIDTH;
 
   let beam: BeamCandidate[] = [
@@ -176,6 +223,7 @@ export async function suggestHsCode(
         client,
         classifyText,
         candidate,
+        goodsPrior,
       );
       expanded.push(...kids);
     }
@@ -191,9 +239,30 @@ export async function suggestHsCode(
   }
 
   beam.sort((a, b) => pathScore(b) - pathScore(a));
-  const top = beam[0];
+  let top = beam[0];
   if (!top || top.pathCodes.length === 0) {
     throw new Error("Could not traverse HS taxonomy for this description.");
+  }
+
+  // Hard prior: if description cues lock a legal HS6, prefer that leaf even when
+  // the judgment client (esp. live TypeSafe) drifted into telecom / other chapters.
+  const priorHs6 = goodsPrior?.path[goodsPrior.path.length - 1];
+  if (priorHs6 && isLegalHs6(taxonomy, priorHs6)) {
+    const priorMatch = beam.find(
+      (c) => c.pathCodes[c.pathCodes.length - 1] === priorHs6,
+    );
+    if (priorMatch) {
+      top = priorMatch;
+    } else {
+      const ancestry = buildAncestryPath(taxonomy, priorHs6);
+      top = {
+        pathCodes: ancestry.map((s) => s.hscode),
+        probabilityProduct: 0.92 ** Math.max(1, ancestry.length),
+        decisionCount: ancestry.length,
+        edgeProbabilities: ancestry.map(() => 0.92),
+        edgeConfidences: ancestry.map(() => 0.95),
+      };
+    }
   }
 
   const leafCode = top.pathCodes[top.pathCodes.length - 1]!;
@@ -215,7 +284,9 @@ export async function suggestHsCode(
     }),
   );
 
-  const second = beam[1];
+  const second =
+    beam.find((c) => c.pathCodes[c.pathCodes.length - 1] !== leafCode) ??
+    beam[1];
   const topScore = pathScore(top);
   const secondScore = second ? pathScore(second) : null;
   const separation =
