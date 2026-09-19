@@ -41,18 +41,29 @@ npm start   # production server on the same port after build
 | `TYPESAFE_API_KEY` | No | Live TypeSafe System One judgments. If unset, mock token-overlap Choice over the same legal children. |
 | `TYPESAFE_MODEL` | No | Defaults to `jev-latest`. |
 
+## Try it (shipment document → Suggest HS6)
+
+1. In the right **document** pane, **Upload** a text-based commercial invoice **PDF** (or `.txt`), or drag-and-drop onto the pane. Extracted text fills the preview.
+2. Click **Suggest HS6** — Customs agent trail / Decision Trace fills from that text (TypeSafe when `TYPESAFE_API_KEY` is set).
+3. **Assign draft** remains human-gated; **Post** stays disabled.
+
+Paste into the preview textarea still works. Sample invoices in the dropdown remain for a quick mock path.
+
+**OCR is not included yet.** Scanned or image-only PDFs return a clear empty-extract message — use a text-based PDF, `.txt`, or paste.
+
 ## What this slice includes
 
 1. **Pinned taxonomy** — DataHub / UN Comtrade Harmonized System `2022.0` under `data/hs2022/` (CSV split into `harmonized-system-part1.csv` + `harmonized-system-part2.csv`; loader merges them).
-2. **UI** — Review declaration console: Customs agent trail, Fields/Lines (purple Missing until Assign), document preview; Suggest HS6 / Assign draft / Request review; Post disabled.
-3. **TypeSafe judgments only** — hierarchical Choice + optional verification Noul; never invents HS strings.
-4. **Closed command catalog** — including blocked `submit_declaration`.
-5. **Mock fallback** when `TYPESAFE_API_KEY` is missing.
+2. **Document loading** — PDF text extraction via `/api/extract` (`pdf-parse`), plus `.txt` / paste / samples.
+3. **UI** — Review declaration console: Customs agent trail, Fields/Lines (purple Missing until Assign), document preview; Suggest HS6 / Assign draft / Request review; Post disabled.
+4. **TypeSafe judgments only** — hierarchical Choice + optional verification Noul; never invents HS strings.
+5. **Closed command catalog** — including blocked `submit_declaration`.
+6. **Mock fallback** when `TYPESAFE_API_KEY` is missing.
 
 ## Out of scope
 
-Real customs / broker APIs, national 8–10 digit extensions, unsupervised auto-file.
+OCR / scanned-PDF engines, real customs / broker APIs, national 8–10 digit extensions, unsupervised auto-file.
 
 ## Stack
 
-Next.js · TypeScript · Tailwind · shadcn/ui · `@typesafe-ai/sdk`
+Next.js · TypeScript · Tailwind · shadcn/ui · `@typesafe-ai/sdk` · `pdf-parse`

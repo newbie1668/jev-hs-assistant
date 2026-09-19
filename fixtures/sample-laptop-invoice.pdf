@@ -1,0 +1,36 @@
+%PDF-1.4
+1 0 obj<< /Type /Catalog /Pages 2 0 R >>endobj
+2 0 obj<< /Type /Pages /Kids [3 0 R] /Count 1 >>endobj
+3 0 obj<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources<< /Font<< /F1 5 0 R >> >> >>endobj
+4 0 obj<< /Length 532 >>
+stream
+BT
+/F1 10 Tf
+40 760 Td
+13 TL
+(COMMERCIAL INVOICE) Tj
+T* (Seller: Northwind Electronics Ltd) Tj
+T* (Buyer: Contoso Retail GmbH) Tj
+T* (Invoice No: INV-2026-4412) Tj
+T* (Description of goods: Portable automatic data processing machines, weighing not more) Tj
+T* (than 10 kg, consisting of at least a central processing unit, a keyboard and a) Tj
+T* (display - 50 units of 14-inch business laptops \(ADP machines\).) Tj
+T* (HS hint from supplier \(unverified\): chapter 84) Tj
+T* (Net weight: 62 kg) Tj
+T* (Country of origin: TW) Tj
+ET
+endstream
+endobj
+5 0 obj<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>endobj
+xref
+0 6
+0000000000 65535 f 
+0000000009 00000 n 
+0000000056 00000 n 
+0000000111 00000 n 
+0000000233 00000 n 
+0000000815 00000 n 
+trailer<< /Size 6 /Root 1 0 R >>
+startxref
+883
+%%EOF

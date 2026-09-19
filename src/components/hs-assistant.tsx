@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import type { AssignmentRecord } from "@/lib/assignments";
 import type { HsSuggestion } from "@/lib/hs/types";
 import { SAMPLE_DOCUMENTS } from "@/lib/samples";
 import { type DecisionTrace } from "@/lib/typesafe/trace";
 import { AgentTrail } from "@/components/agent-trail";
+
+const UPLOAD_ACCEPT = ".pdf,.txt,.csv,.md,text/plain,application/pdf";
 
 interface MetaResponse {
   judgmentMode: "typesafe" | "mock";
@@ -173,6 +183,11 @@ export function HsAssistant() {
   const [lineFilter, setLineFilter] = useState<LineFilter>("all");
   const [headersOpen, setHeadersOpen] = useState(true);
   const [linesOpen, setLinesOpen] = useState(true);
+  const [loadingExtract, setLoadingExtract] = useState(false);
+  const [docLabel, setDocLabel] = useState(SAMPLE_DOCUMENTS[0]!.title);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepth = useRef(0);
 
   const fields = useMemo(() => parseDoc(text), [text]);
 
@@ -351,15 +366,99 @@ export function HsAssistant() {
     if (!sample) return;
     setSampleId(id);
     setText(sample.text);
+    setDocLabel(sample.title);
     setSuggestion(null);
     setAssignedHs(null);
+    setError(null);
     setStatus(`Sample: ${sample.title}`);
+  }
+
+  function resetClassification() {
+    setSuggestion(null);
+    setAssignedHs(null);
+  }
+
+  async function ingestUploadedFile(file: File) {
+    setError(null);
+    setStatus(null);
+    setLoadingExtract(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/extract", {
+        method: "POST",
+        body: form,
+      });
+      const data = (await res.json()) as {
+        text?: string;
+        fileName?: string;
+        pageCount?: number;
+        source?: string;
+        error?: string;
+        code?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? "Could not extract document text");
+      }
+      const extracted = (data.text ?? "").trim();
+      if (!extracted) {
+        throw new Error(
+          "No extractable text found. Scanned PDFs need OCR, which is not supported yet.",
+        );
+      }
+      setText(extracted);
+      setSampleId("");
+      setDocLabel(data.fileName ?? file.name);
+      resetClassification();
+      const pages =
+        data.pageCount && data.pageCount > 0
+          ? ` · ${data.pageCount} page${data.pageCount === 1 ? "" : "s"}`
+          : "";
+      setStatus(
+        `Loaded ${data.fileName ?? file.name}${pages}. Run Suggest HS6 to classify.`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setLoadingExtract(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function onDocDragEnter(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current += 1;
+    setDragOver(true);
+  }
+
+  function onDocDragLeave(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  }
+
+  function onDocDragOver(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onDocDrop(e: DragEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepth.current = 0;
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) void ingestUploadedFile(file);
   }
 
   const showLine =
     lineFilter === "all" || (lineFilter === "exceptions" && lineHasException);
 
   const displayHs = assignedHs ?? suggestion?.hscode ?? null;
+  const sampleSelectValue =
+    sampleId || (docLabel ? "__uploaded__" : SAMPLE_DOCUMENTS[0]!.id);
 
   return (
     <div className="mx-auto flex h-[min(920px,calc(100vh-2.5rem))] w-full max-w-[1400px] flex-col overflow-hidden rounded-[28px] border border-white/50 bg-white/30 shadow-[0_24px_80px_-20px_rgba(13,13,13,0.45),inset_0_1px_0_rgba(255,255,255,0.65)] backdrop-blur-[40px] backdrop-saturate-150">
@@ -454,7 +553,7 @@ export function HsAssistant() {
               <Button
                 type="button"
                 size="sm"
-                disabled={!text.trim() || loadingSuggest}
+                disabled={!text.trim() || loadingSuggest || loadingExtract}
                 onClick={() => startTransition(() => void runSuggest())}
               >
                 {loadingSuggest || isPending ? "Classifying…" : "Suggest HS6"}
@@ -724,58 +823,92 @@ export function HsAssistant() {
         </section>
 
         {/* Right — document preview */}
-        <aside className="hidden min-h-0 flex-col bg-white/15 backdrop-blur-[24px] lg:flex">
-          <div className="flex items-center justify-between border-b border-white/35 px-3 py-2.5">
+        <aside
+          className="relative hidden min-h-0 flex-col bg-white/15 backdrop-blur-[24px] lg:flex"
+          onDragEnter={onDocDragEnter}
+          onDragLeave={onDocDragLeave}
+          onDragOver={onDocDragOver}
+          onDrop={onDocDrop}
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-white/35 px-3 py-2.5">
             <select
-              value={sampleId}
-              onChange={(e) => loadSample(e.target.value)}
-              className="max-w-[70%] truncate rounded-md border-0 bg-transparent text-[13px] font-medium text-[#0d0d0d] outline-none"
+              value={sampleSelectValue}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "__uploaded__") return;
+                loadSample(v);
+              }}
+              className="max-w-[58%] truncate rounded-md border-0 bg-transparent text-[13px] font-medium text-[#0d0d0d] outline-none"
+              aria-label="Document source"
             >
+              {!sampleId && (
+                <option value="__uploaded__">
+                  {docLabel.length > 28 ? `${docLabel.slice(0, 28)}…` : docLabel}
+                </option>
+              )}
               {SAMPLE_DOCUMENTS.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.title.split("—")[0]?.trim()}
                 </option>
               ))}
             </select>
-            <label className="cursor-pointer text-[11px] text-[#807d73] hover:text-[#0d0d0d]">
-              Upload
+            <label
+              className={`cursor-pointer text-[11px] ${
+                loadingExtract
+                  ? "text-[#bfbcae]"
+                  : "text-[#807d73] hover:text-[#0d0d0d]"
+              }`}
+            >
+              {loadingExtract ? "Extracting…" : "Upload"}
               <input
+                ref={fileInputRef}
                 type="file"
-                accept=".txt,.csv,.md,text/plain"
+                accept={UPLOAD_ACCEPT}
                 className="hidden"
+                disabled={loadingExtract}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    setText(String(reader.result ?? ""));
-                    setSuggestion(null);
-                    setAssignedHs(null);
-                    setSampleId("");
-                    setStatus(`Loaded ${file.name}`);
-                  };
-                  reader.readAsText(file);
+                  if (file) void ingestUploadedFile(file);
                 }}
               />
             </label>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="relative min-h-0 flex-1 overflow-y-auto p-3">
+            {dragOver && (
+              <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#0d0d0d]/35 bg-[#f9f9f6]/85 text-[13px] font-medium text-[#0d0d0d]">
+                Drop PDF or .txt to extract
+              </div>
+            )}
             <div className="min-h-full rounded-lg bg-white p-4 shadow-[0_12px_40px_-18px_rgba(13,13,13,0.35)]">
-              <textarea
-                value={text}
-                onChange={(e) => {
-                  setText(e.target.value);
-                  setSuggestion(null);
-                  setAssignedHs(null);
-                }}
-                className="min-h-[420px] w-full resize-none border-0 bg-transparent font-mono text-[11px] leading-relaxed text-[#1a1a1a] outline-none"
-                spellCheck={false}
-              />
+              {loadingExtract ? (
+                <p className="font-mono text-[11px] text-[#807d73]">
+                  Extracting text from document…
+                </p>
+              ) : (
+                <textarea
+                  value={text}
+                  onChange={(e) => {
+                    setText(e.target.value);
+                    resetClassification();
+                    if (sampleId) {
+                      setSampleId("");
+                      setDocLabel("Pasted text");
+                    }
+                  }}
+                  placeholder="Paste shipment text, or upload a PDF / .txt…"
+                  className="min-h-[420px] w-full resize-none border-0 bg-transparent font-mono text-[11px] leading-relaxed text-[#1a1a1a] outline-none placeholder:text-[#bfbcae]"
+                  spellCheck={false}
+                />
+              )}
             </div>
           </div>
           <div className="flex items-center justify-between border-t border-white/35 px-3 py-2 text-[11px] text-[#807d73]">
-            <span>Page 1/1</span>
-            <span>100%</span>
+            <span>
+              {text.trim()
+                ? `${text.trim().split(/\s+/).length} words`
+                : "Empty"}
+            </span>
+            <span>PDF / txt</span>
           </div>
         </aside>
       </div>
