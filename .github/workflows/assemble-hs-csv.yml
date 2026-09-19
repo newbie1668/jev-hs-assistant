@@ -1,0 +1,40 @@
+name: Assemble full HS CSV
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/assemble-hs-csv.yml"
+      - "data/hs2022/harmonized-system-part1.csv"
+      - "data/hs2022/harmonized-system-part2.csv"
+permissions:
+  contents: write
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Merge part1/part2 into harmonized-system.csv
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          p1 = Path("data/hs2022/harmonized-system-part1.csv").read_text()
+          p2 = Path("data/hs2022/harmonized-system-part2.csv").read_text()
+          body = "\n".join(p2.splitlines()[1:])
+          out = p1.rstrip("\n") + "\n" + body.rstrip("\n") + "\n"
+          Path("data/hs2022/harmonized-system.csv").write_text(out)
+          print(len(out.encode()))
+          PY
+          test "$(wc -c < data/hs2022/harmonized-system.csv)" -eq 850576
+      - name: Commit assembled CSV
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/hs2022/harmonized-system.csv
+          if git diff --cached --quiet; then
+            echo "No CSV changes"
+          else
+            git commit -m "Assemble data/hs2022/harmonized-system.csv from part1/part2"
+            git push
+          fi
