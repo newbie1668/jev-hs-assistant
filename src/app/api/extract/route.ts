@@ -73,7 +73,7 @@ export async function POST(request: Request) {
 
     if (!(file instanceof File)) {
       return NextResponse.json(
-        { error: "Upload a file under the form field “file”.” },
+        { error: "Upload a file under the form field “file”." },
         { status: 400 },
       );
     }
