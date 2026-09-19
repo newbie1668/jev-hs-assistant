@@ -1,0 +1,29 @@
+name: Import beam prior fix
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/import-beam-prior.yml'
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cursor/fuji-housing-prior-bcb6
+      - name: Fetch beam.ts
+        run: |
+          curl -fsSL "https://paste.rs/cyJYv" -o src/lib/classify/beam.ts
+          test -s src/lib/classify/beam.ts
+          grep -q 'detectGoodsPrior' src/lib/classify/beam.ts
+          grep -q 'applyGoodsPriorToChoice' src/lib/classify/beam.ts
+          wc -c src/lib/classify/beam.ts
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/classify/beam.ts
+          git diff --cached --quiet || git commit -m "Wire goods prior into HS beam search"
+          git push origin HEAD:cursor/fuji-housing-prior-bcb6
