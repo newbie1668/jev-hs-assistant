@@ -1,0 +1,202 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans), "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono), "Fragment Mono", ui-monospace, monospace;
+  --font-heading: var(--font-sans), "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/* Raft-aligned product tokens — see docs/raft-design-language.md */
+:root {
+  --raft-ink: #0d0d0d;
+  --raft-muted: #807d73;
+  --raft-muted-2: #66645c;
+  --raft-bg: #f3f2ed;
+  --raft-bg-soft: #f9f9f6;
+  /* Glass fills — Raft marketing: white 0.2–0.4 + blur 15–20px; dark frost 0.35–0.45 + blur 20–37.5px */
+  --raft-panel: rgba(255, 255, 255, 0.32);
+  --raft-panel-strong: rgba(255, 255, 255, 0.48);
+  --raft-panel-soft: rgba(255, 255, 255, 0.18);
+  --raft-panel-gradient: linear-gradient(
+    136deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.16) 48%,
+    rgba(255, 255, 255, 0.30) 100%
+  );
+  --raft-panel-solid: #f9f9f6;
+  --raft-glass-border: rgba(255, 255, 255, 0.62);
+  --raft-glass-border-outer: color-mix(in srgb, var(--raft-line) 40%, transparent);
+  --raft-glass-blur: 36px;
+  --raft-glass-blur-sm: 20px;
+  --raft-glass-saturate: 1.45;
+  --raft-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --raft-glass-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 8px 32px -12px rgba(13, 13, 13, 0.18),
+    0 24px 48px -28px rgba(13, 13, 13, 0.14);
+  --raft-line: #ccc9ba;
+  --raft-stone: #e2dfd4;
+  --raft-cta: #0d0d0d;
+  --raft-cta-fg: #f9f9f6;
+  --raft-amber: #ff9128;
+  --raft-missing: #7c3aed;
+  --raft-check: #3b82f6;
+  --raft-radius-pill: 9999px;
+  --raft-radius-panel: 1.25rem;
+  --raft-radius-control: 0.5rem;
+
+  /* Alias legacy Jev vars → Raft */
+  --jev-ink: var(--raft-ink);
+  --jev-muted: var(--raft-muted);
+  --jev-accent: var(--raft-ink);
+  --jev-paper: var(--raft-panel-solid);
+  --jev-line: var(--raft-line);
+  --jev-wash: var(--raft-stone);
+
+  --background: var(--raft-bg);
+  --foreground: var(--raft-ink);
+  --card: var(--raft-panel);
+  --card-foreground: var(--raft-ink);
+  --popover: rgba(255, 255, 255, 0.72);
+  --popover-foreground: var(--raft-ink);
+  --primary: var(--raft-cta);
+  --primary-foreground: var(--raft-cta-fg);
+  --secondary: rgba(255, 255, 255, 0.42);
+  --secondary-foreground: var(--raft-ink);
+  --muted: var(--raft-stone);
+  --muted-foreground: var(--raft-muted);
+  --accent: rgba(255, 255, 255, 0.35);
+  --accent-foreground: var(--raft-ink);
+  --destructive: #b42318;
+  --border: var(--raft-line);
+  --input: var(--raft-line);
+  --ring: var(--raft-ink);
+  --chart-1: #0d0d0d;
+  --chart-2: #807d73;
+  --chart-3: #ff9128;
+  --chart-4: #bfbcae;
+  --chart-5: #66645c;
+  --radius: 0.5rem;
+  --sidebar: var(--raft-bg-soft);
+  --sidebar-foreground: var(--raft-ink);
+  --sidebar-primary: var(--raft-ink);
+  --sidebar-primary-foreground: var(--raft-cta-fg);
+  --sidebar-accent: var(--raft-stone);
+  --sidebar-accent-foreground: var(--raft-ink);
+  --sidebar-border: var(--raft-line);
+  --sidebar-ring: var(--raft-ink);
+}
+
+.dark {
+  --background: #0d0d0d;
+  --foreground: #f9f9f6;
+  --card: #1d1d1f;
+  --card-foreground: #f9f9f6;
+  --popover: #1d1d1f;
+  --popover-foreground: #f9f9f6;
+  --primary: #f9f9f6;
+  --primary-foreground: #0d0d0d;
+  --secondary: rgba(255, 255, 255, 0.08);
+  --secondary-foreground: #f9f9f6;
+  --muted: #262626;
+  --muted-foreground: #99968a;
+  --accent: #262626;
+  --accent-foreground: #f9f9f6;
+  --destructive: #f97066;
+  --border: rgba(255, 255, 255, 0.12);
+  --input: rgba(255, 255, 255, 0.14);
+  --ring: #f9f9f6;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+/* Primary frosted panel — Raft light gradient glass + strong blur
+   (backdrop-filter must go through Tailwind utilities; raw props get stripped) */
+.raft-glass {
+  background-color: var(--raft-panel);
+  background-image: var(--raft-panel-gradient);
+  border: 1px solid var(--raft-glass-border-outer);
+  outline: 1px solid color-mix(in srgb, var(--raft-glass-border) 70%, transparent);
+  outline-offset: -1px;
+  border-radius: var(--raft-radius-panel);
+  box-shadow: var(--raft-glass-shadow);
+  @apply backdrop-blur-[36px] backdrop-saturate-150;
+}
+
+/* Nested / denser frost (inputs, sticky bars, chips) */
+.raft-glass-inset {
+  background-color: var(--raft-panel-strong);
+  border: 1px solid color-mix(in srgb, var(--raft-glass-border) 80%, var(--raft-line));
+  border-radius: var(--raft-radius-control);
+  box-shadow: var(--raft-glass-highlight);
+  @apply backdrop-blur-[20px] backdrop-saturate-125;
+}
+
+/* Softest wash glass (empty states, secondary strips) */
+.raft-glass-soft {
+  background-color: var(--raft-panel-soft);
+  border: 1px solid color-mix(in srgb, white 40%, var(--raft-line));
+  border-radius: var(--raft-radius-panel);
+  box-shadow: var(--raft-glass-highlight);
+  @apply backdrop-blur-[18px] backdrop-saturate-125;
+}
+
+.raft-eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--raft-muted);
+}
