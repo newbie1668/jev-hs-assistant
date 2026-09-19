@@ -1,0 +1,56 @@
+name: Assemble sources from chunks
+on:
+  push:
+    paths:
+      - "build-parts/**"
+      - ".github/workflows/assemble-sources.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Concatenate source chunks
+        run: |
+          set -euo pipefail
+          assemble_txt() {
+            local dir="$1" dest="$2"
+            if [ ! -d "$dir" ]; then return 0; fi
+            shopt -s nullglob
+            parts=("$dir"/src-*.txt)
+            if [ ${#parts[@]} -eq 0 ]; then return 0; fi
+            mkdir -p "$(dirname "$dest")"
+            cat "${parts[@]}" > "$dest"
+            echo "Wrote $dest ($(wc -c < "$dest") bytes)"
+          }
+          assemble_txt build-parts/judgments src/lib/typesafe/judgments.ts
+          assemble_txt build-parts/hs-assistant src/components/hs-assistant.tsx
+          python3 << 'PY'
+          import base64, zlib, pathlib, hashlib
+          for name, dest in [
+            ("package-lock", "package-lock.json"),
+            ("harmonized-system", "data/hs2022/harmonized-system.csv"),
+          ]:
+            d = pathlib.Path("build-parts") / name
+            if not d.exists():
+              continue
+            parts = sorted(d.glob("*.zlib.b64"))
+            if not parts:
+              continue
+            b64 = "".join(p.read_text().strip() for p in parts)
+            data = zlib.decompress(base64.b64decode(b64))
+            out = pathlib.Path(dest)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(data)
+            print(name, "->", dest, len(data), hashlib.sha256(data).hexdigest()[:12])
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/lib/typesafe/judgments.ts src/components/hs-assistant.tsx package-lock.json data/hs2022/harmonized-system.csv || true
+          if git diff --cached --quiet; then echo no changes; exit 0; fi
+          git commit -m "Assemble full source files from build-parts chunks"
+          git push
