@@ -1,0 +1,52 @@
+name: Inflate build-parts
+on:
+  push:
+    paths:
+      - "build-parts/**"
+      - ".github/workflows/inflate-build-parts.yml"
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  inflate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inflate zlib+base64 parts
+        run: |
+          python3 << 'PY'
+          import base64, zlib, pathlib, hashlib
+          mapping = {
+            "judgments": "src/lib/typesafe/judgments.ts",
+            "hs-assistant": "src/components/hs-assistant.tsx",
+            "package-lock": "package-lock.json",
+            "harmonized-system": "data/hs2022/harmonized-system.csv",
+          }
+          root = pathlib.Path("build-parts")
+          changed = []
+          for name, dest in mapping.items():
+            d = root / name
+            if not d.exists():
+              continue
+            parts = sorted(d.glob("*.zlib.b64"))
+            if not parts:
+              continue
+            b64 = "".join(p.read_text().strip() for p in parts)
+            data = zlib.decompress(base64.b64decode(b64))
+            out = pathlib.Path(dest)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(data)
+            print(name, "->", dest, len(data), hashlib.sha256(data).hexdigest()[:12])
+            changed.append(dest)
+          pathlib.Path("/tmp/changed.txt").write_text("\n".join(changed))
+          PY
+      - name: Commit inflated files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mapfile -t files < /tmp/changed.txt || true
+          if [ ${#files[@]} -eq 0 ]; then echo none; exit 0; fi
+          git add "${files[@]}"
+          if git diff --cached --quiet; then echo no changes; exit 0; fi
+          git commit -m "Inflate full source files from build-parts"
+          git push
