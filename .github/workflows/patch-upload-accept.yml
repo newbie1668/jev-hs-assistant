@@ -1,0 +1,61 @@
+name: Patch upload accept-all UI
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/patch-upload-accept.yml"
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove restrictive file-input accept
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          p = Path("src/components/hs-assistant.tsx")
+          t = p.read_text()
+          old = 'const UPLOAD_ACCEPT = ".pdf,.txt,.csv,.md,text/plain,application/pdf";\n\n'
+          if old in t:
+              t = t.replace(old, "")
+          t = t.replace(
+              '                type="file"\n                accept={UPLOAD_ACCEPT}\n                className="hidden"',
+              '                type="file"\n                className="hidden"',
+          )
+          t = t.replace(
+              '"No extractable text found. Scanned PDFs need OCR, which is not supported yet."',
+              '"No extractable text found. Try a text-based PDF, .txt, a clearer image, or paste the shipment text."',
+          )
+          t = t.replace(
+              "Drop PDF or .txt to extract",
+              "Drop any file to extract text",
+          )
+          t = t.replace(
+              "Paste shipment text, or upload a PDF / .txt…",
+              "Paste shipment text, or upload a PDF, image, or .txt…",
+          )
+          t = t.replace(
+              "<span>PDF / txt</span>",
+              "<span>Any file</span>",
+          )
+          if "UPLOAD_ACCEPT" in t or "accept={UPLOAD_ACCEPT}" in t:
+              raise SystemExit("accept filter still present after patch")
+          p.write_text(t)
+          print("hs-assistant.tsx patched")
+          PY
+      - name: Commit
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/hs-assistant.tsx
+          if git diff --staged --quiet; then
+            echo "No UI changes to commit"
+          else
+            git commit -m "Remove file picker accept so all files are selectable"
+            git push
+          fi
