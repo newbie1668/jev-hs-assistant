@@ -1,0 +1,47 @@
+name: Import stated-hs UI trail files
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/import-stated-hs-trail.yml'
+permissions:
+  contents: write
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: cursor/stated-hs-compare-e550
+      - name: Download files from tmpfiles
+        run: |
+          set -euo pipefail
+          download() {
+            local url="$1" dest="$2" expect="$3"
+            echo "Fetching $dest"
+            mkdir -p "$(dirname "$dest")"
+            curl -sSL "$url" -o "$dest"
+            actual=$(wc -c < "$dest" | tr -d ' ')
+            echo "bytes=$actual expect=$expect"
+            test "$actual" -eq "$expect"
+          }
+          download "https://tmpfiles.org/dl/1789860885.5fa7d78f02f80ae2/w6wSNdpus1aj/agent-trail.tsx" "src/components/agent-trail.tsx" 14314
+          download "https://tmpfiles.org/dl/1789860886.4e7558e819d4c582/wzw6NEpwsWvv/judgments.ts" "src/lib/typesafe/judgments.ts" 26341
+          download "https://tmpfiles.org/dl/1789860887.da403da8a5998044/wkwZNspBspY1/hs-assistant.tsx" "src/components/hs-assistant.tsx" 35166
+          download "https://tmpfiles.org/dl/1789860888.af645dd88835998d/wKw6NIpwsy1d/package-lock.json" "package-lock.json" 373058
+          head -5 src/components/agent-trail.tsx | grep -q 'use client'
+          grep -q 'documentStated' src/components/agent-trail.tsx
+          grep -q '900691' src/lib/typesafe/judgments.ts
+          grep -q 'documentStated' src/components/hs-assistant.tsx
+      - name: Commit
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/components/agent-trail.tsx src/lib/typesafe/judgments.ts src/components/hs-assistant.tsx package-lock.json
+          if git diff --staged --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Wire UI trail + camera cues for description-based HS suggest"
+            git push origin HEAD:cursor/stated-hs-compare-e550
+          fi
