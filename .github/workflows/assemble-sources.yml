@@ -26,12 +26,14 @@ jobs:
               out = pathlib.Path(dest)
               out.parent.mkdir(parents=True, exist_ok=True)
               out.write_bytes(data)
-              print(dir_name, "->", dest, len(data), hashlib.sha256(data).hexdigest()[:12])
+              print(dir_name, "->", dest, len(data), hashlib.sha256(data).hexdigest()[:12], "from", len(parts), "parts")
               return dest
 
           def assemble_zlib(dir_name, dest):
               d = pathlib.Path("build-parts") / dir_name
               parts = sorted(d.glob("*.zlib.b64"))
+              # skip empty/corrupt single files under 100 bytes
+              parts = [p for p in parts if p.stat().st_size > 100]
               if not parts:
                   return None
               b64 = "".join(p.read_text().strip() for p in parts)
@@ -50,9 +52,12 @@ jobs:
               ("harmonized-system", "data/hs2022/harmonized-system.csv", "zlib"),
           ]:
               fn = assemble_hex if kind == "hex" else assemble_zlib
-              r = fn(name, dest)
-              if r:
-                  changed.append(r)
+              try:
+                  r = fn(name, dest)
+                  if r:
+                      changed.append(r)
+              except Exception as e:
+                  print("skip", name, e)
           pathlib.Path("/tmp/changed.txt").write_text("\n".join(changed))
           PY
       - name: Commit assembled files
