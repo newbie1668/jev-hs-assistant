@@ -1,4 +1,4 @@
-name: Import hs-assistant component
+name: Import core source files
 on:
   workflow_dispatch:
   push:
@@ -11,20 +11,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Download hs-assistant.tsx
+      - name: Download core sources from tmpfiles
         run: |
           set -euo pipefail
-          page="https://tmpfiles.org/wcwiNW8UrV33/hs-assistant.tsx"
-          html=$(curl -sSL "$page")
-          url=$(printf '%s' "$html" | grep -oE 'https://tmpfiles.org/dl/[0-9]+\.[a-f0-9]+/[^"<> ]+' | head -1)
-          echo "Fetching from $url"
-          mkdir -p src/components
-          curl -sSL "$url" -o src/components/hs-assistant.tsx
-          wc -c src/components/hs-assistant.tsx
-          test $(wc -c < src/components/hs-assistant.tsx) -eq 30201
+          download() {
+            local page="$1" dest="$2" expect="$3"
+            html=$(curl -sSL "$page")
+            url=$(printf '%s' "$html" | grep -oE 'https://tmpfiles.org/dl/[0-9]+\.[a-f0-9]+/[^"<> ]+' | head -1)
+            echo "Fetching $dest from $url"
+            mkdir -p "$(dirname "$dest")"
+            curl -sSL "$url" -o "$dest"
+            wc -c "$dest"
+            test "$(wc -c < "$dest")" -eq "$expect"
+          }
+          download "https://tmpfiles.org/wcwiNW8UrV33/hs-assistant.tsx" "src/components/hs-assistant.tsx" 30201
+          download "https://tmpfiles.org/wPwvNo81GzOK/judgments.ts" "src/lib/typesafe/judgments.ts" 23815
           head -1 src/components/hs-assistant.tsx | grep -q 'use client'
-          sha256sum src/components/hs-assistant.tsx
-          # remove probe junk if present
+          head -1 src/lib/typesafe/judgments.ts | grep -q 'import'
           rm -f .mcp-ping.txt _probe.txt _size_probe_20k.txt data/hs2022/_tmpl_test.txt src/lib/typesafe/_file_ref_test.txt src/lib/typesafe/_probe.txt
           rm -rf build-parts
       - name: Commit
@@ -33,4 +36,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          if git diff --staged --quiet; then echo "No changes"; else git commit -m "Restore real hs-assistant.tsx; remove probe/build-parts junk" && git push; fi
+          if git diff --staged --quiet; then echo "No changes"; else git commit -m "Restore hs-assistant.tsx and judgments.ts; remove build-parts" && git push; fi
