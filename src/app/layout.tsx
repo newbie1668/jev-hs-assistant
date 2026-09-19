@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { Outfit, Fragment_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -20,7 +21,7 @@ export const metadata: Metadata = {
     "Human-gated HS6 suggestions from shipping documents using TypeSafe hierarchical Choice over a pinned HS 2022 taxonomy.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="en"
