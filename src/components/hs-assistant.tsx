@@ -16,8 +16,6 @@ import { SAMPLE_DOCUMENTS } from "@/lib/samples";
 import { type DecisionTrace } from "@/lib/typesafe/trace";
 import { AgentTrail } from "@/components/agent-trail";
 
-const UPLOAD_ACCEPT = ".pdf,.txt,.csv,.md,text/plain,application/pdf";
-
 interface MetaResponse {
   judgmentMode: "typesafe" | "mock";
   taxonomy: {
@@ -403,7 +401,7 @@ export function HsAssistant() {
       const extracted = (data.text ?? "").trim();
       if (!extracted) {
         throw new Error(
-          "No extractable text found. Scanned PDFs need OCR, which is not supported yet.",
+          "No extractable text found. Try a text-based PDF, .txt, a clearer image, or paste the shipment text.",
         );
       }
       setText(extracted);
@@ -863,7 +861,6 @@ export function HsAssistant() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={UPLOAD_ACCEPT}
                 className="hidden"
                 disabled={loadingExtract}
                 onChange={(e) => {
@@ -876,7 +873,7 @@ export function HsAssistant() {
           <div className="relative min-h-0 flex-1 overflow-y-auto p-3">
             {dragOver && (
               <div className="pointer-events-none absolute inset-3 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[#0d0d0d]/35 bg-[#f9f9f6]/85 text-[13px] font-medium text-[#0d0d0d]">
-                Drop PDF or .txt to extract
+                Drop any file to extract text
               </div>
             )}
             <div className="min-h-full rounded-lg bg-white p-4 shadow-[0_12px_40px_-18px_rgba(13,13,13,0.35)]">
@@ -895,7 +892,7 @@ export function HsAssistant() {
                       setDocLabel("Pasted text");
                     }
                   }}
-                  placeholder="Paste shipment text, or upload a PDF / .txt…"
+                  placeholder="Paste shipment text, or upload a PDF, image, or .txt…"
                   className="min-h-[420px] w-full resize-none border-0 bg-transparent font-mono text-[11px] leading-relaxed text-[#1a1a1a] outline-none placeholder:text-[#bfbcae]"
                   spellCheck={false}
                 />
@@ -908,7 +905,7 @@ export function HsAssistant() {
                 ? `${text.trim().split(/\s+/).length} words`
                 : "Empty"}
             </span>
-            <span>PDF / txt</span>
+            <span>Any file</span>
           </div>
         </aside>
       </div>
