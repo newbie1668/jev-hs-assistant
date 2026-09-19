@@ -2,13 +2,20 @@ import {
   buildAncestryPath,
   getChildren,
   getNode,
+  isLegalHs6,
   loadHsTaxonomy,
   type HsTaxonomy,
 } from "@/lib/hs/taxonomy";
 import {
+  extractStatedHsCandidates,
+  goodsTextForClassification,
+  pickPrimaryStatedHs6,
+} from "@/lib/hs/stated-codes";
+import {
   HS6_LEVEL,
   HS_DATASET_VERSION,
   HS_ROOT_PARENT,
+  type DocumentStatedHs,
   type HsNode,
   type HsPathStep,
   type HsSuggestion,
@@ -62,6 +69,24 @@ function isLeafForMvp(taxonomy: HsTaxonomy, node: HsNode): boolean {
   return children.length === 0;
 }
 
+function resolveDocumentStated(
+  taxonomy: HsTaxonomy,
+  documentText: string,
+  suggestedHs6: string,
+): DocumentStatedHs | null {
+  const primary = pickPrimaryStatedHs6(extractStatedHsCandidates(documentText));
+  if (!primary) return null;
+  const node = getNode(taxonomy, primary.hs6);
+  const inTaxonomy = isLegalHs6(taxonomy, primary.hs6);
+  return {
+    rawDigits: primary.rawDigits,
+    hs6: primary.hs6,
+    inTaxonomy,
+    description: node?.description ?? null,
+    disagreesWithSuggestion: primary.hs6 !== suggestedHs6,
+  };
+}
+
 async function expandCandidate(
   taxonomy: HsTaxonomy,
   client: JudgmentClient,
@@ -108,8 +133,14 @@ export async function suggestHsCode(
   goodsDescription: string,
   options?: { beamWidth?: number; verify?: boolean },
 ): Promise<{ suggestion: HsSuggestion; trace: DecisionTrace }> {
-  const text = goodsDescription.trim();
-  if (!text) {
+  const rawText = goodsDescription.trim();
+  if (!rawText) {
+    throw new Error("Goods description is empty — paste shipping document text first.");
+  }
+
+  // Classify from goods wording only — strip / ignore printed HS spans that may be wrong.
+  const classifyText = goodsTextForClassification(rawText);
+  if (!classifyText) {
     throw new Error("Goods description is empty — paste shipping document text first.");
   }
 
@@ -143,7 +174,7 @@ export async function suggestHsCode(
       const kids = await expandCandidate(
         taxonomy,
         client,
-        text,
+        classifyText,
         candidate,
       );
       expanded.push(...kids);
@@ -198,7 +229,7 @@ export async function suggestHsCode(
   let verification: HsSuggestion["verification"];
   if (options?.verify !== false) {
     const v = await client.verifyMatch({
-      goodsDescription: text,
+      goodsDescription: classifyText,
       hscode: leaf.hscode,
       officialDescription: leaf.description,
       pathLabels: path.map((p) => `${p.hscode} ${p.description}`),
@@ -212,6 +243,8 @@ export async function suggestHsCode(
   const runnerUpNode = second
     ? getNode(taxonomy, second.pathCodes[second.pathCodes.length - 1]!)
     : undefined;
+
+  const documentStated = resolveDocumentStated(taxonomy, rawText, leaf.hscode);
 
   return {
     suggestion: {
@@ -232,6 +265,7 @@ export async function suggestHsCode(
       judgmentMode: client.mode,
       edgeConfidences: top.edgeConfidences,
       verification,
+      documentStated,
     },
     trace: trace.finish(),
   };

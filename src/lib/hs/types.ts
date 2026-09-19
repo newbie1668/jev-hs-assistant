@@ -20,6 +20,19 @@ export interface HsPathStep {
   edgeProbability?: number;
 }
 
+export interface DocumentStatedHs {
+  /** Digits as printed on the document (6–10) */
+  rawDigits: string;
+  /** Normalized HS6 (first 6 digits) */
+  hs6: string;
+  /** True when hs6 exists as a level-6 node in the pinned taxonomy */
+  inTaxonomy: boolean;
+  /** Official description when inTaxonomy */
+  description: string | null;
+  /** Suggested HS6 differs from document-stated HS6 */
+  disagreesWithSuggestion: boolean;
+}
+
 export interface HsSuggestion {
   hscode: string;
   description: string;
@@ -39,4 +52,6 @@ export interface HsSuggestion {
     matchProbability: number;
     passed: boolean;
   };
+  /** HS printed on the document (for human compare — not used as the suggestion) */
+  documentStated: DocumentStatedHs | null;
 }

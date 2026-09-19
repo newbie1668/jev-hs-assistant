@@ -510,6 +510,7 @@ export function HsAssistant() {
           suggestionHs={suggestion?.hscode ?? null}
           suggestionDescription={suggestion?.description ?? null}
           suggestionConfidence={suggestion?.confidence ?? null}
+          documentStated={suggestion?.documentStated ?? null}
           command={command}
           onCommandChange={setCommand}
           onCommandSubmit={() => void runCommand()}
@@ -810,6 +811,25 @@ export function HsAssistant() {
                           <span className="font-mono">
                             {suggestion.runnerUp.hscode}
                           </span>
+                        </p>
+                      )}
+                      {suggestion.documentStated && (
+                        <p
+                          className={
+                            suggestion.documentStated.disagreesWithSuggestion
+                              ? "text-[11px] text-amber-800"
+                              : "text-[11px] text-[#807d73]"
+                          }
+                        >
+                          Document states{" "}
+                          <span className="font-mono">
+                            {suggestion.documentStated.rawDigits}
+                          </span>
+                          {" "}
+                          (HS6 {suggestion.documentStated.hs6})
+                          {suggestion.documentStated.disagreesWithSuggestion
+                            ? " — disagrees with description-based suggestion"
+                            : ""}
                         </p>
                       )}
                     </div>

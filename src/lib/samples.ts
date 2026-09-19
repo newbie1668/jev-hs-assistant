@@ -42,4 +42,15 @@ Composition: 100% cotton jersey
 Quantity: 5,000 pcs
 Not woven shirts; knitted cotton garments.`,
   },
+  {
+    id: "underwater-housing",
+    title: "Commercial invoice — camera underwater housing",
+    expectedHs6Hint: "900691",
+    text: `COMMERCIAL INVOICE
+Seller: Pacific Dive Optics Ltd
+Buyer: Contoso Photo Retail
+Invoice No: INV-2026-8801
+Fujifilm X-T2 40M/130FT Underwater housing kit Qty 1 COUNTRY OF ORIGIN: Hong Kong HARMONISED CODE: HS#85171200 UNIT VALUE: 389.99
+Net weight: 1.4 kg`,
+  },
 ];

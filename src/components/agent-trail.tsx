@@ -16,6 +16,13 @@ interface AgentTrailProps {
   suggestionHs?: string | null;
   suggestionDescription?: string | null;
   suggestionConfidence?: number | null;
+  documentStated?: {
+    rawDigits: string;
+    hs6: string;
+    inTaxonomy: boolean;
+    description: string | null;
+    disagreesWithSuggestion: boolean;
+  } | null;
   command: string;
   onCommandChange: (value: string) => void;
   onCommandSubmit: () => void;
@@ -216,6 +223,7 @@ export function AgentTrail({
   suggestionHs,
   suggestionDescription,
   suggestionConfidence,
+  documentStated = null,
   command,
   onCommandChange,
   onCommandSubmit,
@@ -225,7 +233,9 @@ export function AgentTrail({
   const missingNote =
     suggestionHs == null
       ? "I'll highlight the fields that need HS codes. Run Suggest HS6 to walk the taxonomy."
-      : `Suggested ${suggestionHs} — review Fields / Lines, then Assign draft. Post remains blocked.`;
+      : documentStated?.disagreesWithSuggestion
+        ? `Suggested ${suggestionHs} from the goods description — document states ${documentStated.rawDigits} (HS6 ${documentStated.hs6}). Review the disagreement, then Assign draft. Post remains blocked.`
+        : `Suggested ${suggestionHs} — review Fields / Lines, then Assign draft. Post remains blocked.`;
 
   return (
     <aside
@@ -307,6 +317,9 @@ export function AgentTrail({
                 Found Matching HS codes
               </p>
               <div className="rounded-xl border border-white/60 bg-white/55 px-3 py-2.5 backdrop-blur-md">
+                <p className="text-[10px] font-medium uppercase tracking-wide text-[#807d73]">
+                  Suggested from description
+                </p>
                 <p className="font-mono text-[13px] font-semibold text-[#0d0d0d]">
                   {suggestionHs}
                 </p>
@@ -319,6 +332,37 @@ export function AgentTrail({
                   </p>
                 )}
               </div>
+              {documentStated && (
+                <div
+                  className={
+                    documentStated.disagreesWithSuggestion
+                      ? "rounded-xl border border-amber-400/50 bg-amber-50/70 px-3 py-2.5"
+                      : "rounded-xl border border-white/60 bg-white/45 px-3 py-2.5"
+                  }
+                >
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-[#807d73]">
+                    Stated on document
+                  </p>
+                  <p className="font-mono text-[13px] font-semibold text-[#0d0d0d]">
+                    {documentStated.rawDigits}
+                    <span className="ml-1.5 font-sans text-[11px] font-normal text-[#807d73]">
+                      → HS6 {documentStated.hs6}
+                      {!documentStated.inTaxonomy ? " (not in pinned tree)" : ""}
+                    </span>
+                  </p>
+                  {documentStated.description && (
+                    <p className="mt-0.5 text-[12px] leading-snug text-[#66645c]">
+                      {documentStated.description}
+                    </p>
+                  )}
+                  {documentStated.disagreesWithSuggestion && (
+                    <p className="mt-1.5 text-[11px] font-medium text-amber-800">
+                      Disagreement — suggestion follows the goods description;
+                      printed codes may be misclassified.
+                    </p>
+                  )}
+                </div>
+              )}
               <p className="text-[12px] leading-snug text-[#66645c]">
                 {missingNote}
               </p>
