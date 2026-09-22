@@ -52,6 +52,8 @@ export interface HsSuggestion {
     matchProbability: number;
     passed: boolean;
   };
+  /** Set when the beam top failed verification and a passing leaf was swapped in */
+  verificationRerank?: { from: string; to: string } | null;
   /** HS printed on the document (for human compare — not used as the suggestion) */
   documentStated: DocumentStatedHs | null;
 }
