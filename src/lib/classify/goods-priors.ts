@@ -13,7 +13,7 @@ export interface GoodsPrior {
 }
 
 const CAMERA_HOUSING_QUERY =
-  /underwater\s+housing|camera\s+housing|housing\s+kit|(?:fujifilm|canon|nikon|sony).{0,40}housing|housing.{0,40}(?:fujifilm|camera|x-?t\d)/i;
+  /underwater\s+housing|camera\s+housing|dive\s+housing|(?:fujifilm|canon|nikon|sony|olympus|gopro).{0,40}housing|housing.{0,40}(?:fujifilm|canon|nikon|sony|camera|x-?t\d)|housing\s+kit.{0,60}(?:camera|photograph|underwater|dive)|(?:camera|photograph|underwater|dive).{0,60}housing\s+kit/i;
 
 /**
  * Camera underwater housing kits are photographic accessories (HS 9006.91),

@@ -15,12 +15,12 @@ export interface StatedHsCandidate {
 }
 
 const LABELLED_HS_RE =
-  /(?:harmonis[e]?d\s*code|harmonized\s*code|hs\s*code|h\.?\s*s\.?\s*code|tariff\s*code|commodity\s*code)\s*[:#.\-\s]*\s*(?:hs\s*[#:]?\s*)?(\d{4}\.?\d{2}\.?\d{0,4}|\d{6,10})/gi;
+  /\b(?:harmonis[e]?d\s*code|harmonized\s*code|hs\s*code|h\.?\s*s\.?\s*code|tariff\s*code|commodity\s*code)\s*[:#.\-\s]*\s*(?:\bhs\s*[#:]?\s*)?(\d{4}\.?\d{2}\.?\d{0,4}|\d{6,10})/gi;
 
 const HASH_HS_RE = /\bHS\s*[#:]?\s*(\d{6,10})\b/gi;
 
 const LOOSE_NEAR_LABEL_RE =
-  /(?:HS|H\.S\.|harmonis[e]?d|harmonized)[^\n]{0,40}?(\d{6,10})/gi;
+  /\b(?:HS|H\.S\.|harmonis[e]?d|harmonized|harmoni[sz]ed\s+system|tariff)\b[^\n]{0,40}?(\d{6,10})/gi;
 
 function digitsOnly(span: string): string {
   return span.replace(/\D/g, "");
@@ -66,7 +66,7 @@ export function extractStatedHsCandidates(text: string): StatedHsCandidate[] {
     while ((m = re.exec(text)) !== null) {
       const digits = m[1] ?? "";
       const labelMatch = m[0].match(
-        /harmonis[e]?d\s*code|harmonized\s*code|hs\s*code|h\.?\s*s\.?\s*code|tariff\s*code|commodity\s*code|HS/i,
+        /harmonis[e]?d\s*code|harmonized\s*code|hs\s*code|h\.?\s*s\.?\s*code|tariff\s*code|commodity\s*code|\bHS\b/i,
       );
       pushUnique(out, seen, digits, labelMatch?.[0] ?? null, m.index);
     }
@@ -98,12 +98,12 @@ export function stripStatedHsFromText(text: string): string {
   // Fresh regexes — global flags retain lastIndex across calls.
   return text
     .replace(
-      /(?:harmonis[e]?d\s*code|harmonized\s*code|hs\s*code|h\.?\s*s\.?\s*code|tariff\s*code|commodity\s*code)\s*[:#.\-\s]*\s*(?:hs\s*[#:]?\s*)?(\d{4}\.?\d{2}\.?\d{0,4}|\d{6,10})/gi,
+      /\b(?:harmonis[e]?d\s*code|harmonized\s*code|hs\s*code|h\.?\s*s\.?\s*code|tariff\s*code|commodity\s*code)\s*[:#.\-\s]*\s*(?:\bhs\s*[#:]?\s*)?(\d{4}\.?\d{2}\.?\d{0,4}|\d{6,10})/gi,
       " ",
     )
     .replace(/\bHS\s*[#:]?\s*(\d{6,10})\b/gi, " ")
     .replace(
-      /(?:HS|H\.S\.|harmonis[e]?d|harmonized)[^\n]{0,40}?(\d{6,10})/gi,
+      /\b(?:HS|H\.S\.|harmonis[e]?d|harmonized|harmoni[sz]ed\s+system|tariff)\b[^\n]{0,40}?(\d{6,10})/gi,
       " ",
     )
     .replace(/\s+/g, " ")

@@ -162,7 +162,10 @@ export class TraceCollector {
       totalCostUsd: this.mode === "mock" ? null : anyCost ? totalCostUsd : null,
       costSource,
       costNote,
-      steps: this.steps,
+      // Stable sort by start time — parallel expansions may finish out of order.
+      steps: [...this.steps].sort((a, b) =>
+        a.startedAt.localeCompare(b.startedAt),
+      ),
     };
   }
 }

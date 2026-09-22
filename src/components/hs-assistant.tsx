@@ -253,7 +253,8 @@ export function HsAssistant() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Suggest failed");
-      setSuggestion(data.suggestion as HsSuggestion);
+      const s = data.suggestion as HsSuggestion;
+      setSuggestion(s);
       if (data.trace) {
         publishTrace(
           data.trace as DecisionTrace,
@@ -261,9 +262,15 @@ export function HsAssistant() {
         );
       }
       setCenterTab("lines");
-      setStatus(
-        `Suggested ${(data.suggestion as HsSuggestion).hscode} via ${(data.suggestion as HsSuggestion).judgmentMode}. Assign to clear Missing.`,
-      );
+      if (s.verification?.passed === false || s.confidence < 0.3) {
+        setStatus(
+          `Low-confidence suggestion (verification failed) — review before assigning.`,
+        );
+      } else {
+        setStatus(
+          `Suggested ${s.hscode} via ${s.judgmentMode}. Assign to clear Missing.`,
+        );
+      }
     } catch (e) {
       setSuggestion(null);
       setError(e instanceof Error ? e.message : "Suggest failed");
@@ -459,7 +466,7 @@ export function HsAssistant() {
     sampleId || (docLabel ? "__uploaded__" : SAMPLE_DOCUMENTS[0]!.id);
 
   return (
-    <div className="mx-auto flex h-[min(920px,calc(100vh-2.5rem))] w-full max-w-[1400px] flex-col overflow-hidden rounded-[28px] border border-white/50 bg-white/30 shadow-[0_24px_80px_-20px_rgba(13,13,13,0.45),inset_0_1px_0_rgba(255,255,255,0.65)] backdrop-blur-[40px] backdrop-saturate-150">
+    <div className="mx-auto flex h-[min(920px,calc(100vh-2.5rem))] w-full max-w-[1400px] flex-col overflow-y-auto rounded-[28px] border border-white/50 bg-white/30 shadow-[0_24px_80px_-20px_rgba(13,13,13,0.45),inset_0_1px_0_rgba(255,255,255,0.65)] backdrop-blur-[40px] backdrop-saturate-150 lg:overflow-hidden">
       {/* Window chrome */}
       <header className="relative flex shrink-0 items-center gap-3 border-b border-white/40 px-4 py-2.5">
         <div className="flex items-center gap-1.5" aria-hidden>
@@ -510,6 +517,7 @@ export function HsAssistant() {
           suggestionHs={suggestion?.hscode ?? null}
           suggestionDescription={suggestion?.description ?? null}
           suggestionConfidence={suggestion?.confidence ?? null}
+          suggestionVerification={suggestion?.verification ?? null}
           documentStated={suggestion?.documentStated ?? null}
           command={command}
           onCommandChange={setCommand}
@@ -606,8 +614,8 @@ export function HsAssistant() {
               </p>
             </div>
 
-            {(centerTab === "fields" || true) && (
-              <div className={centerTab === "lines" ? "mb-6" : "mb-2"}>
+            {centerTab === "fields" && (
+              <div className="mb-2">
                 <button
                   type="button"
                   className="mb-3 flex items-center gap-1.5 text-[13px] font-medium text-[#0d0d0d]"
@@ -651,7 +659,8 @@ export function HsAssistant() {
               </div>
             )}
 
-            <div className={centerTab === "fields" ? "mt-6" : ""}>
+            {centerTab === "lines" && (
+            <div>
               <button
                 type="button"
                 className="mb-3 flex items-center gap-1.5 text-[13px] font-medium text-[#0d0d0d]"
@@ -701,6 +710,7 @@ export function HsAssistant() {
                       onClick={() => {
                         setLineFilter("all");
                         setSuggestion(null);
+                        setAssignedHs(null);
                       }}
                     >
                       Clear
@@ -805,6 +815,18 @@ export function HsAssistant() {
                           </li>
                         ))}
                       </ol>
+                      {suggestion.verification && (
+                        <p
+                          className={
+                            suggestion.verification.passed
+                              ? "text-[11px] text-[#807d73]"
+                              : "text-[11px] font-medium text-amber-800"
+                          }
+                        >
+                          Verification {pct(suggestion.verification.matchProbability)} ·{" "}
+                          {suggestion.verification.passed ? "pass" : "fail"}
+                        </p>
+                      )}
                       {suggestion.runnerUp && (
                         <p className="text-[11px] text-[#807d73]">
                           Runner-up{" "}
@@ -837,12 +859,13 @@ export function HsAssistant() {
                 </>
               )}
             </div>
+            )}
           </div>
         </section>
 
         {/* Right — document preview */}
         <aside
-          className="relative hidden min-h-0 flex-col bg-white/15 backdrop-blur-[24px] lg:flex"
+          className="relative flex min-h-0 flex-col bg-white/15 backdrop-blur-[24px]"
           onDragEnter={onDocDragEnter}
           onDragLeave={onDocDragLeave}
           onDragOver={onDocDragOver}

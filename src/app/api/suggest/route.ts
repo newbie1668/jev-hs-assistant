@@ -2,15 +2,16 @@ import { NextResponse } from "next/server";
 import { suggestHsCode } from "@/lib/classify/beam";
 import { taxonomyStats, loadHsTaxonomy } from "@/lib/hs/taxonomy";
 import { getJudgmentMode } from "@/lib/typesafe/judgments";
+import { invalidJsonResponse, readJsonBody } from "@/lib/api/json-body";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as {
-      text?: string;
-      verify?: boolean;
-    };
+    const body = await readJsonBody<{ text?: string; verify?: boolean }>(
+      request,
+    );
+    if (!body) return invalidJsonResponse();
     const text = body.text?.trim() ?? "";
     if (!text) {
       return NextResponse.json(

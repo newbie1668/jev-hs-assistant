@@ -185,31 +185,31 @@ function overlapScore(
     // Photographic / camera gear (incl. underwater housings) → ch. 90 / 9006
     {
       query:
-        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|photographic|digital\s+camera|\bx-?t\d\b|\bdslr\b|mirrorless|canon|nikon/i,
+        /underwater\s+housing|camera\s+housing|fujifilm|photographic|digital\s+camera|\bx-?t\d\b|\bdslr\b|mirrorless|canon|nikon/i,
       candidate: /^90\s|optical, photographic, cinematographic/i,
       boost: 14,
     },
     {
       query:
-        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|photographic|digital\s+camera|\bx-?t\d\b|\bdslr\b|mirrorless/i,
+        /underwater\s+housing|camera\s+housing|fujifilm|photographic|digital\s+camera|\bx-?t\d\b|\bdslr\b|mirrorless/i,
       candidate: /^9006\s|cameras, photographic \(excluding/i,
       boost: 16,
     },
     {
       query:
-        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|\bx-?t\d\b/i,
+        /underwater\s+housing|camera\s+housing|fujifilm|\bx-?t\d\b/i,
       candidate: /^900691\s|cameras, photographic.{0,60}parts and accessories/i,
       boost: 14,
     },
     {
       query:
-        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|\bx-?t\d\b/i,
+        /underwater\s+housing|camera\s+housing|fujifilm|\bx-?t\d\b/i,
       candidate: /photographic flashlight|900699|90066/i,
       boost: -8,
     },
     {
       query:
-        /underwater\s+housing|camera\s+housing|housing\s+kit|fujifilm|photographic|\bx-?t\d\b/i,
+        /underwater\s+housing|camera\s+housing|fujifilm|photographic|\bx-?t\d\b/i,
       candidate:
         /laboratory apparatus|negatoscopes|projection screens|9010|parts and accessories n\.e\.c\. in chapter 90|9033/i,
       boost: -12,
