@@ -263,8 +263,12 @@ export function HsAssistant() {
       }
       setCenterTab("lines");
       if (s.verification?.passed === false || s.confidence < 0.3) {
+        const reason =
+          s.verification?.passed === false
+            ? "verification failed"
+            : "low confidence";
         setStatus(
-          `Low-confidence suggestion (verification failed) — review before assigning.`,
+          `Suggested ${s.hscode} via ${s.judgmentMode} (${reason}) — review carefully before assigning.`,
         );
       } else {
         setStatus(
