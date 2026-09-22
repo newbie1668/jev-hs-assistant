@@ -249,7 +249,9 @@ export async function suggestHsCode(
   // Hard prior: if description cues lock a legal HS6, prefer that leaf even when
   // the judgment client (esp. live TypeSafe) drifted into telecom / other chapters.
   const priorHs6 = goodsPrior?.path[goodsPrior.path.length - 1];
+  let priorApplied = false;
   if (priorHs6 && isLegalHs6(taxonomy, priorHs6)) {
+    priorApplied = true;
     const priorMatch = beam.find(
       (c) => c.pathCodes[c.pathCodes.length - 1] === priorHs6,
     );
@@ -267,10 +269,82 @@ export async function suggestHsCode(
     }
   }
 
-  const leafCode = top.pathCodes[top.pathCodes.length - 1]!;
-  const leaf = getNode(taxonomy, leafCode);
+  let leafCode = top.pathCodes[top.pathCodes.length - 1]!;
+  let leaf = getNode(taxonomy, leafCode);
   if (!leaf) {
     throw new Error(`Invalid HS code produced: ${leafCode}`);
+  }
+
+  let verification: HsSuggestion["verification"];
+  let verificationRerank: HsSuggestion["verificationRerank"] = null;
+  if (options?.verify !== false) {
+    if (priorApplied) {
+      const pathLabels = buildAncestryPath(taxonomy, leafCode).map(
+        (p) => `${p.hscode} ${p.description}`,
+      );
+      const v = await client.verifyMatch({
+        goodsDescription: classifyText,
+        hscode: leaf.hscode,
+        officialDescription: leaf.description,
+        pathLabels,
+      });
+      verification = {
+        matchProbability: v.matchProbability,
+        passed: v.matchProbability >= 0.55,
+      };
+    } else {
+      // Verify the top finished HS6 leaves in parallel; if the beam top fails
+      // verification but another candidate passes, prefer the passing leaf.
+      const seenCodes = new Set<string>();
+      const targets: Array<{ candidate: BeamCandidate; node: HsNode }> = [];
+      for (const candidate of beam) {
+        const code = candidate.pathCodes[candidate.pathCodes.length - 1]!;
+        const node = getNode(taxonomy, code);
+        if (!node || node.level !== HS6_LEVEL || seenCodes.has(code)) continue;
+        seenCodes.add(code);
+        targets.push({ candidate, node });
+        if (targets.length >= 3) break;
+      }
+      if (!seenCodes.has(leafCode)) {
+        targets.unshift({ candidate: top, node: leaf });
+      }
+
+      const results = await Promise.all(
+        targets.map(async ({ candidate, node }) => {
+          const pathLabels = buildAncestryPath(taxonomy, node.hscode).map(
+            (p) => `${p.hscode} ${p.description}`,
+          );
+          const v = await client.verifyMatch({
+            goodsDescription: classifyText,
+            hscode: node.hscode,
+            officialDescription: node.description,
+            pathLabels,
+          });
+          return { candidate, node, matchProbability: v.matchProbability };
+        }),
+      );
+
+      let chosen = results.find((r) => r.node.hscode === leafCode) ?? results[0]!;
+      if (chosen.matchProbability < 0.55) {
+        const passing = results
+          .filter((r) => r !== chosen && r.matchProbability >= 0.55)
+          .sort((a, b) => b.matchProbability - a.matchProbability)[0];
+        if (passing) {
+          verificationRerank = {
+            from: chosen.node.hscode,
+            to: passing.node.hscode,
+          };
+          chosen = passing;
+          top = passing.candidate;
+          leafCode = passing.node.hscode;
+          leaf = passing.node;
+        }
+      }
+      verification = {
+        matchProbability: chosen.matchProbability,
+        passed: chosen.matchProbability >= 0.55,
+      };
+    }
   }
 
   const path: HsPathStep[] = buildAncestryPath(taxonomy, leafCode).map(
@@ -292,20 +366,6 @@ export async function suggestHsCode(
     top.edgeConfidences.length === 0
       ? 0
       : Math.min(...top.edgeConfidences);
-
-  let verification: HsSuggestion["verification"];
-  if (options?.verify !== false) {
-    const v = await client.verifyMatch({
-      goodsDescription: classifyText,
-      hscode: leaf.hscode,
-      officialDescription: leaf.description,
-      pathLabels: path.map((p) => `${p.hscode} ${p.description}`),
-    });
-    verification = {
-      matchProbability: v.matchProbability,
-      passed: v.matchProbability >= 0.55,
-    };
-  }
 
   const runnerUpNode = second
     ? getNode(taxonomy, second.pathCodes[second.pathCodes.length - 1]!)
@@ -332,6 +392,7 @@ export async function suggestHsCode(
       judgmentMode: client.mode,
       edgeConfidences: top.edgeConfidences,
       verification,
+      verificationRerank,
       documentStated,
     },
     trace: trace.finish(),

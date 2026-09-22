@@ -59,7 +59,7 @@ Unsupported binaries (or empty OCR / scanned PDFs with no text layer) return a c
 1. **Pinned taxonomy** — DataHub / UN Comtrade Harmonized System `2022.0` under `data/hs2022/` (CSV split into `harmonized-system-part1.csv` + `harmonized-system-part2.csv`; loader merges them).
 2. **Document loading** — open file picker (any type) + `/api/extract` for PDF / text / image OCR.
 3. **UI** — Review declaration console: Customs agent trail, Fields/Lines (purple Missing until Assign), document preview; Suggest HS6 / Assign draft / Request review; Post disabled.
-4. **TypeSafe judgments only** — hierarchical Choice + optional verification Noul over goods wording; never invents HS strings. Codes printed on the document are extracted for compare/verify only.
+4. **TypeSafe judgments only** — hierarchical Choice + optional verification Noul over goods wording; never invents HS strings. Codes printed on the document are extracted for compare/verify only. Finished beam leaves are verified in parallel, and when the beam's top leaf fails verification the suggestion is swapped for a passing candidate (surfaced as a rerank note in the UI).
 5. **Closed command catalog** — including blocked `submit_declaration`.
 6. **Mock fallback** when `TYPESAFE_API_KEY` is missing.
 

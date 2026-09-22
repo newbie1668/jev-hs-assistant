@@ -849,6 +849,15 @@ export function HsAssistant() {
                           {suggestion.verification.passed ? "pass" : "fail"}
                         </p>
                       )}
+                      {suggestion.verificationRerank && (
+                        <p className="text-[11px] text-[#807d73]">
+                          Reranked from{" "}
+                          <span className="font-mono">
+                            {suggestion.verificationRerank.from}
+                          </span>
+                          : beam top failed verification
+                        </p>
+                      )}
                       {suggestion.runnerUp && (
                         <p className="text-[11px] text-[#807d73]">
                           Runner-up{" "}
