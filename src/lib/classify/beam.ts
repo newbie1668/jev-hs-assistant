@@ -354,9 +354,9 @@ export async function suggestHsCode(
     }),
   );
 
-  const second =
-    beam.find((c) => c.pathCodes[c.pathCodes.length - 1] !== leafCode) ??
-    beam[1];
+  const second = beam.find(
+    (c) => c.pathCodes[c.pathCodes.length - 1] !== leafCode,
+  );
   const topScore = pathScore(top);
   const secondScore = second ? pathScore(second) : null;
   const separation =
