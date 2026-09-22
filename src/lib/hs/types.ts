@@ -1,3 +1,5 @@
+import type { DecisionTrace } from "@/lib/typesafe/trace";
+
 export const HS_DATASET_VERSION = "2022.0" as const;
 export const HS_ROOT_PARENT = "TOTAL" as const;
 export const HS6_LEVEL = 6;
@@ -56,4 +58,12 @@ export interface HsSuggestion {
   verificationRerank?: { from: string; to: string } | null;
   /** HS printed on the document (for human compare — not used as the suggestion) */
   documentStated: DocumentStatedHs | null;
+}
+
+/** Per-goods-line classification result for multi-item documents. */
+export interface LineItemSuggestion {
+  index: number;
+  lineText: string;
+  suggestion: HsSuggestion;
+  trace: DecisionTrace;
 }

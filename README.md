@@ -52,6 +52,8 @@ npm start   # production server on the same port after build
 
 Paste into the preview textarea still works. Sample invoices in the dropdown remain for a quick mock path — try **Commercial invoice — camera underwater housing** (Fujifilm housing kit with a wrong printed `HS#85171200`).
 
+**Multi-item documents:** when a document has several goods lines (`Description:`/`Item:` lines, inline blobs, or a numbered/bulleted list), it's split into up to 8 lines and each line is classified independently. The Lines tab shows one row per line — click a line to review its path, verification, and printed-code comparison, then Assign draft per line.
+
 Unsupported binaries (or empty OCR / scanned PDFs with no text layer) return a clear error — paste the shipment text as a fallback.
 
 ## What this slice includes
