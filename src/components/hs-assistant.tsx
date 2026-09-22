@@ -294,8 +294,8 @@ export function HsAssistant() {
       const labels = newItems.map(
         (it) => `line ${it.index + 1}: ${it.lineText.slice(0, 60)}`,
       );
-      const priorEntries = newItems.slice(0, -1).map((it, i) => ({
-        query: labels[i]!,
+      const priorEntries = newItems.slice(1).map((it) => ({
+        query: labels[it.index]!,
         latencyMs: it.trace.totalLatencyMs,
       }));
       setTraceHistory((h) =>
@@ -312,9 +312,8 @@ export function HsAssistant() {
           ...h,
         ].slice(0, 4),
       );
-      const lastItem = newItems[newItems.length - 1]!;
-      setActiveTrace(lastItem.trace);
-      setTraceQuery(labels[labels.length - 1]!);
+      setActiveTrace(newItems[0]!.trace);
+      setTraceQuery(labels[0]!);
 
       setCenterTab("lines");
       const anyFail = newItems.some(
@@ -833,7 +832,13 @@ export function HsAssistant() {
                               return (
                                 <tr
                                   key={i}
-                                  onClick={() => setSelectedItem(i)}
+                                  onClick={() => {
+                                    setSelectedItem(i);
+                                    setActiveTrace(item.trace);
+                                    setTraceQuery(
+                                      `line ${i + 1}: ${item.lineText.slice(0, 60)}`,
+                                    );
+                                  }}
                                   className={`cursor-pointer border-b border-white/30 last:border-0 ${
                                     i === selectedItem ? "bg-white/40" : ""
                                   }`}
