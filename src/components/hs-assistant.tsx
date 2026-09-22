@@ -732,6 +732,7 @@ export function HsAssistant() {
                         setLineFilter("all");
                         setSuggestion(null);
                         setAssignedHs(null);
+                        setStatus(null);
                       }}
                     >
                       Clear
