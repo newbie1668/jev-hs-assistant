@@ -43,3 +43,5 @@ next-env.d.ts
 
 # tesseract OCR language data (downloaded at runtime)
 *.traineddata
+
+eval-results.json

@@ -63,6 +63,16 @@ Unsupported binaries (or empty OCR / scanned PDFs with no text layer) return a c
 5. **Closed command catalog** — including blocked `submit_declaration`.
 6. **Mock fallback** when `TYPESAFE_API_KEY` is missing.
 
+## Evaluating classification accuracy
+
+A labelled eval set lives in `fixtures/eval-cases.json` (~55 real-invoice style documents). Build and start the production server first — `npm run build && npm start` (set `TYPESAFE_API_KEY` in `.env.local` for live mode; without it the eval runs in mock mode) — then:
+
+```bash
+npm run eval
+```
+
+`scripts/eval-suggest.mjs` posts each case to `/api/suggest` and grades the result **HS6** (exact), **HS4**, **HS2**, or **MISS**, printing per-case rows (verification result, rerank note, latency) plus totals, and writes the full detail to `eval-results.json`. Each case's `expect` lists acceptable HS6 codes; an empty `expect` means "not goods — expect a warning, not a code". Override the server with `BASE=http://host:port npm run eval`.
+
 ## Out of scope
 
 Scanned-PDF OCR engines (image upload OCR is best-effort), real customs / broker APIs, national 8–10 digit extensions, unsupervised auto-file.
