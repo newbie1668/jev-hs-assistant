@@ -170,6 +170,51 @@ async function expandCandidate(
   return next;
 }
 
+/** Beam-descend from a start beam until all tips are HS6 (or childless). */
+async function descend(
+  taxonomy: HsTaxonomy,
+  client: JudgmentClient,
+  goodsDescription: string,
+  prior: GoodsPrior | null,
+  startBeam: BeamCandidate[],
+  beamWidth: number,
+): Promise<BeamCandidate[]> {
+  let beam = startBeam;
+  for (let depth = 0; depth < 8; depth += 1) {
+    const unfinished = beam.filter((c) => {
+      if (c.pathCodes.length === 0) return true;
+      const node = getNode(taxonomy, c.pathCodes[c.pathCodes.length - 1]!);
+      return node ? !isLeafForMvp(taxonomy, node) : false;
+    });
+    if (unfinished.length === 0) break;
+
+    const expanded = (
+      await Promise.all(
+        unfinished.map((candidate) =>
+          expandCandidate(
+            taxonomy,
+            client,
+            goodsDescription,
+            candidate,
+            prior,
+          ),
+        ),
+      )
+    ).flat();
+    // Keep finished leaves from previous beam
+    const finished = beam.filter((c) => {
+      if (c.pathCodes.length === 0) return false;
+      const node = getNode(taxonomy, c.pathCodes[c.pathCodes.length - 1]!);
+      return node ? isLeafForMvp(taxonomy, node) : false;
+    });
+    const merged = [...finished, ...expanded];
+    merged.sort((a, b) => pathScore(b) - pathScore(a));
+    beam = merged.slice(0, beamWidth);
+  }
+  beam.sort((a, b) => pathScore(b) - pathScore(a));
+  return beam;
+}
+
 export async function suggestHsCode(
   goodsDescription: string,
   options?: {
@@ -197,7 +242,12 @@ export async function suggestHsCode(
   const goodsPrior = detectGoodsPrior(classifyText);
   const beamWidth = options?.beamWidth ?? DEFAULT_BEAM_WIDTH;
 
-  let beam: BeamCandidate[] = [
+  // Expand the root explicitly so unexplored chapter candidates stay
+  // available for the verification-triggered fallback descent below.
+  const rootExpanded = await expandCandidate(
+    taxonomy,
+    client,
+    classifyText,
     {
       pathCodes: [],
       probabilityProduct: 1,
@@ -205,42 +255,21 @@ export async function suggestHsCode(
       edgeProbabilities: [],
       edgeConfidences: [],
     },
-  ];
+    goodsPrior,
+  );
+  const rootCandidates = [...rootExpanded].sort(
+    (a, b) => b.probabilityProduct - a.probabilityProduct,
+  );
 
-  // Descend until all beam tips are HS6 (or childless)
-  for (let depth = 0; depth < 8; depth += 1) {
-    const unfinished = beam.filter((c) => {
-      if (c.pathCodes.length === 0) return true;
-      const node = getNode(taxonomy, c.pathCodes[c.pathCodes.length - 1]!);
-      return node ? !isLeafForMvp(taxonomy, node) : false;
-    });
-    if (unfinished.length === 0) break;
+  const beam = await descend(
+    taxonomy,
+    client,
+    classifyText,
+    goodsPrior,
+    rootCandidates.slice(0, beamWidth),
+    beamWidth,
+  );
 
-    const expanded = (
-      await Promise.all(
-        unfinished.map((candidate) =>
-          expandCandidate(
-            taxonomy,
-            client,
-            classifyText,
-            candidate,
-            goodsPrior,
-          ),
-        ),
-      )
-    ).flat();
-    // Keep finished leaves from previous beam
-    const finished = beam.filter((c) => {
-      if (c.pathCodes.length === 0) return false;
-      const node = getNode(taxonomy, c.pathCodes[c.pathCodes.length - 1]!);
-      return node ? isLeafForMvp(taxonomy, node) : false;
-    });
-    const merged = [...finished, ...expanded];
-    merged.sort((a, b) => pathScore(b) - pathScore(a));
-    beam = merged.slice(0, beamWidth);
-  }
-
-  beam.sort((a, b) => pathScore(b) - pathScore(a));
   let top = beam[0];
   if (!top || top.pathCodes.length === 0) {
     throw new Error("Could not traverse HS taxonomy for this description.");
@@ -326,9 +355,21 @@ export async function suggestHsCode(
 
       let chosen = results.find((r) => r.node.hscode === leafCode) ?? results[0]!;
       if (chosen.matchProbability < 0.55) {
+        // Guard: only swap when the alternative wins on pathScore×match —
+        // a barely-passing weak path must not displace a strong beam top.
+        const chosenCombined = pathScore(chosen.candidate) * chosen.matchProbability;
         const passing = results
-          .filter((r) => r !== chosen && r.matchProbability >= 0.55)
-          .sort((a, b) => b.matchProbability - a.matchProbability)[0];
+          .filter(
+            (r) =>
+              r !== chosen &&
+              r.matchProbability >= 0.55 &&
+              pathScore(r.candidate) * r.matchProbability > chosenCombined,
+          )
+          .sort(
+            (a, b) =>
+              pathScore(b.candidate) * b.matchProbability -
+              pathScore(a.candidate) * a.matchProbability,
+          )[0];
         if (passing) {
           verificationRerank = {
             from: chosen.node.hscode,
@@ -344,6 +385,64 @@ export async function suggestHsCode(
         matchProbability: chosen.matchProbability,
         passed: chosen.matchProbability >= 0.55,
       };
+
+      // Chapter fallback: when every verified leaf fails, the beam may have
+      // pruned the right chapter at depth 2 — descend the best unexplored
+      // chapter once and verify its top leaf.
+      if (!verificationRerank && chosen.matchProbability < 0.55) {
+        const exploredChapters = new Set(
+          beam.map((c) => c.pathCodes[0]),
+        );
+        const fallbackChapter = rootCandidates.find(
+          (c) =>
+            !exploredChapters.has(c.pathCodes[0]) &&
+            (c.edgeProbabilities[0] ?? 0) >= 0.01,
+        );
+        if (fallbackChapter) {
+          const fallbackBeam = await descend(
+            taxonomy,
+            client,
+            classifyText,
+            goodsPrior,
+            [fallbackChapter],
+            2,
+          );
+          const fallbackLeaf = fallbackBeam.find((c) => {
+            const node = getNode(
+              taxonomy,
+              c.pathCodes[c.pathCodes.length - 1]!,
+            );
+            return node?.level === HS6_LEVEL;
+          });
+          if (fallbackLeaf) {
+            const code =
+              fallbackLeaf.pathCodes[fallbackLeaf.pathCodes.length - 1]!;
+            const node = getNode(taxonomy, code)!;
+            const pathLabels = buildAncestryPath(taxonomy, code).map(
+              (p) => `${p.hscode} ${p.description}`,
+            );
+            const v = await client.verifyMatch({
+              goodsDescription: classifyText,
+              hscode: node.hscode,
+              officialDescription: node.description,
+              pathLabels,
+            });
+            if (v.matchProbability >= 0.55) {
+              verificationRerank = {
+                from: chosen.node.hscode,
+                to: node.hscode,
+              };
+              top = fallbackLeaf;
+              leafCode = node.hscode;
+              leaf = node;
+              verification = {
+                matchProbability: v.matchProbability,
+                passed: true,
+              };
+            }
+          }
+        }
+      }
     }
   }
 
