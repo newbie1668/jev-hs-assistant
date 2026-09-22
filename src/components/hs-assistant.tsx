@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import type { AssignmentRecord } from "@/lib/assignments";
+import { goodsTextForClassification } from "@/lib/hs/stated-codes";
 import type { HsSuggestion } from "@/lib/hs/types";
 import { SAMPLE_DOCUMENTS } from "@/lib/samples";
 import { type DecisionTrace } from "@/lib/typesafe/trace";
@@ -66,16 +67,31 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
+/** Whitespace before an inline meta label — cuts a captured value short. */
+const INLINE_META_RE =
+  /\s+(?=\b(?:Qty|Quantity|COUNTRY\s+OF\s+ORIGIN|ORIGIN|HARMONIS[E]?D\s+CODE|HARMONIZED\s+CODE|HS\s*CODE|HS\s*#|UNIT\s+VALUE|UNIT\s+PRICE|NET\s+WEIGHT|GROSS\s+WEIGHT)\b)/i;
+
 function parseDoc(text: string): ParsedDocFields {
   const grab = (re: RegExp): string | null => {
     const m = text.match(re);
     return m?.[1]?.trim() || null;
   };
 
+  // Like grab, but trims the captured value at the first inline meta label.
+  const grabField = (re: RegExp): string | null => {
+    const m = text.match(re);
+    const value = m?.[1]?.split(INLINE_META_RE)[0]?.trim();
+    return value || null;
+  };
+
   const description =
-    grab(/Description of goods:\s*([^\n]+)/i) ||
-    grab(/Contents:\s*([^\n]+)/i) ||
-    grab(/Commodity:\s*([^\n]+)/i);
+    grabField(/Description of goods:\s*([^\n]+)/i) ||
+    grabField(/Contents:\s*([^\n]+)/i) ||
+    grabField(/Commodity:\s*([^\n]+)/i) ||
+    (() => {
+      const goods = goodsTextForClassification(text);
+      return goods && goods.length < 200 ? goods : null;
+    })();
 
   return {
     mode: grab(/Mode:\s*([^\n]+)/i) || (text.includes("BILL OF LADING") ? "Ocean" : "Air"),
@@ -89,18 +105,19 @@ function parseDoc(text: string): ParsedDocFields {
       grab(/Invoice No:\s*([^\n]+)/i) ||
       grab(/Shipment:\s*([^\n]+)/i),
     origin:
-      grab(/Country of origin:\s*([^\n]+)/i) ||
-      grab(/Origin:\s*([^\n]+)/i),
+      grabField(/Country of origin:\s*([^\n]+)/i) ||
+      grabField(/Origin:\s*([^\n]+)/i),
     description,
     qty:
-      grab(/Quantity:\s*([^\n]+)/i) ||
-      grab(/(\d[\d,]*)\s*units?/i) ||
+      grabField(/Quantity:\s*([^\n]+)/i) ||
+      grab(/\bQty:?\s*(\d[\d,]*)/i) ||
+      grab(/(\d[\d,]*)\s*(?:units|unit)\b(?!\s+(?:value|price))/i) ||
       grab(/(\d[\d,]*)\s*pcs/i) ||
       grab(/(\d[\d,]*)\s*bags/i),
-    amount: grab(/(?:Amount|Value):\s*([^\n]+)/i),
+    amount: grabField(/(?:Amount|Value|UNIT\s+VALUE):\s*([^\n]+)/i),
     weight:
-      grab(/Net weight:\s*([^\n]+)/i) ||
-      grab(/Gross weight:\s*([^\n]+)/i),
+      grabField(/Net weight:\s*([^\n]+)/i) ||
+      grabField(/Gross weight:\s*([^\n]+)/i),
   };
 }
 

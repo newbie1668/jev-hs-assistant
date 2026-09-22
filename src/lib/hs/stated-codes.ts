@@ -110,6 +110,10 @@ export function stripStatedHsFromText(text: string): string {
     .trim();
 }
 
+/** Meta labels that follow the goods wording inside a one-line invoice blob. */
+const INLINE_META_SPLIT_RE =
+  /\b(?:Qty(?=\s*\d)|Quantity(?=\s*\d)|COUNTRY\s+OF\s+ORIGIN|ORIGIN|HARMONIS[E]?D\s+CODE|HARMONIZED\s+CODE|HS\s*CODE|HS\s*#|UNIT\s+VALUE|UNIT\s+PRICE|NET\s+WEIGHT|GROSS\s+WEIGHT)\b/i;
+
 /**
  * Prefer explicit goods / commodity / contents lines when present;
  * fall back to the full document with stated HS spans stripped.
@@ -125,21 +129,11 @@ export function goodsTextForClassification(documentText: string): string {
       descLines.push(m[1].trim());
       continue;
     }
-    // Inline commercial-invoice blobs: keep product wording before origin / HS / value.
-    if (
-      /underwater\s+housing|camera|lens|fujifilm|canon|nikon|sony\s+a\d|photographic/i.test(
-        line,
-      )
-    ) {
-      const beforeMeta = line
-        .split(
-          /\b(?:COUNTRY\s+OF\s+ORIGIN|ORIGIN|HARMONIS[E]?D\s+CODE|HARMONIZED\s+CODE|HS\s*CODE|HS\s*#|UNIT\s+VALUE|UNIT\s+PRICE)\b/i,
-        )[0]
-        ?.trim();
+    // Inline commercial-invoice blobs: keep product wording before qty / origin / HS / value.
+    if (INLINE_META_SPLIT_RE.test(line)) {
+      const beforeMeta = line.split(INLINE_META_SPLIT_RE)[0]?.trim();
       if (beforeMeta && beforeMeta.length >= 8) {
         descLines.push(beforeMeta);
-      } else {
-        descLines.push(line);
       }
     }
   }

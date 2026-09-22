@@ -32,6 +32,12 @@ describe("stated HS extraction — word boundaries", () => {
     assert.equal(goodsTextForClassification(text), "Widgets");
   });
 
+  it("extracts goods wording before meta labels in non-camera inline blobs", () => {
+    const text =
+      "Stainless steel bolts M8 Qty 500 COUNTRY OF ORIGIN: DE HS CODE: 731815 UNIT PRICE: 0.10";
+    assert.equal(goodsTextForClassification(text), "Stainless steel bolts M8");
+  });
+
   it("still extracts HS# prefixed codes", () => {
     const text = "HARMONISED CODE: HS#85171200";
     const candidates = extractStatedHsCandidates(text);
