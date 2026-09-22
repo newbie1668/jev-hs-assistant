@@ -114,17 +114,66 @@ export function stripStatedHsFromText(text: string): string {
 const INLINE_META_SPLIT_RE =
   /\b(?:Qty(?=\s*\d)|Quantity(?=\s*\d)|COUNTRY\s+OF\s+ORIGIN|ORIGIN|HARMONIS[E]?D\s+CODE|HARMONIZED\s+CODE|HS\s*CODE|HS\s*#|UNIT\s+VALUE|UNIT\s+PRICE|NET\s+WEIGHT|GROSS\s+WEIGHT)\b/i;
 
+/** Explicit goods-line label (Description / Contents / Commodity / …). */
+const DESC_LABEL_VALUE_RE =
+  /^(?:description(?:\s+of\s+goods)?|contents|commodity|goods|product|item)\s*[:\-]\s*(.+)$/i;
+
+/** Numbered / bulleted item lines (only used when no labelled lines exist). */
+const BULLETED_ITEM_RE = /^\s*(?:\d{1,3}[.)]|[-•*])\s+(.{8,})$/;
+
+/** Max goods lines classified per document. */
+export const MAX_GOODS_LINES = 8;
+
+/**
+ * Raw goods-bearing lines in a document — the full original line each time
+ * (printed HS codes stay attached so per-line compare/disagreement works).
+ * Recognised: labelled description lines, inline blobs with meta labels,
+ * and — only when no labelled lines exist — numbered/bulleted item lists.
+ */
+export function extractGoodsLines(documentText: string): string[] {
+  const lines = documentText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const labelled: string[] = [];
+  const bulleted: string[] = [];
+  for (const line of lines) {
+    if (DESC_LABEL_VALUE_RE.test(line)) {
+      labelled.push(line);
+      continue;
+    }
+    if (INLINE_META_SPLIT_RE.test(line)) {
+      const beforeMeta = line.split(INLINE_META_SPLIT_RE)[0]?.trim();
+      if (beforeMeta && beforeMeta.length >= 8) {
+        labelled.push(line);
+      }
+      continue;
+    }
+    if (BULLETED_ITEM_RE.test(line)) {
+      bulleted.push(line);
+    }
+  }
+
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (line: string) => {
+    const key = line.trim().toLowerCase();
+    if (seen.has(key) || out.length >= MAX_GOODS_LINES) return;
+    seen.add(key);
+    out.push(line);
+  };
+  for (const line of labelled) push(line);
+  if (labelled.length === 0 && bulleted.length >= 2) {
+    for (const line of bulleted) push(line);
+  }
+  return out;
+}
+
 /**
  * Prefer explicit goods / commodity / contents lines when present;
  * fall back to the full document with stated HS spans stripped.
  */
 export function goodsTextForClassification(documentText: string): string {
-  const lines = documentText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const descLines: string[] = [];
-  for (const line of lines) {
-    const m = line.match(
-      /^(?:description(?:\s+of\s+goods)?|contents|commodity|goods|product|item)\s*[:\-]\s*(.+)$/i,
-    );
+  for (const line of extractGoodsLines(documentText)) {
+    const m = line.match(DESC_LABEL_VALUE_RE);
     if (m?.[1]) {
       descLines.push(m[1].trim());
       continue;
@@ -134,8 +183,10 @@ export function goodsTextForClassification(documentText: string): string {
       const beforeMeta = line.split(INLINE_META_SPLIT_RE)[0]?.trim();
       if (beforeMeta && beforeMeta.length >= 8) {
         descLines.push(beforeMeta);
+        continue;
       }
     }
+    descLines.push(line);
   }
 
   const focused =

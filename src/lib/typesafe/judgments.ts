@@ -677,20 +677,24 @@ function createTypeSafeClient(trace?: TraceCollector): JudgmentClient {
     },
     async verifyMatch(state) {
       const instructions =
-        "Does the official HS description reasonably match the goods as stated? Judge from the product wording only; printed HS / harmonised codes on the document may be incorrect and must not decide the match.";
+        "Would a customs officer classify these goods under this HS subheading? HS wording is a legal category written in technical terms, not a product name: goods fit when they fall within the category even if the everyday product name differs (e.g. a phone charger is a 'static converter'). Judge from the goods wording only; any printed HS / harmonised code on the document may be wrong and must not decide the answer.";
+      const criteria = {
+        true: "The goods fall within this subheading: the chapter, heading and subheading path all apply to what the goods are, what they are made of and their state (fresh/frozen/assembled/etc.).",
+        false: "The goods belong under a different chapter, heading or subheading, or an element of the path conflicts with the goods (wrong material, wrong function, wrong processing state, only a part/accessory, or not goods at all).",
+      };
       const requestPayload = {
         model,
         state: {
           goods_description: state.goodsDescription,
-          suggested_hscode: state.hscode,
-          official_description: state.officialDescription,
-          path_labels: state.pathLabels,
+          candidate: {
+            hscode: state.hscode,
+            chapter: state.pathLabels[0] ?? "",
+            heading: state.pathLabels[state.pathLabels.length - 2] ?? "",
+            subheading: `${state.hscode} ${state.officialDescription}`,
+          },
         },
         questions: {
-          matches: noul(instructions, {
-            true: "The goods clearly fit this HS node wording.",
-            false: "Material conflict or the goods belong elsewhere.",
-          }),
+          matches: noul(instructions, criteria),
         },
       };
       const timed = await withTiming(() => client.systemOne(requestPayload));
@@ -718,10 +722,7 @@ function createTypeSafeClient(trace?: TraceCollector): JudgmentClient {
           questionType: "noul",
           instructions,
           state: previewState(requestPayload.state),
-          criteriaPreview: {
-            true: "The goods clearly fit this HS node wording.",
-            false: "Material conflict or the goods belong elsewhere.",
-          },
+          criteriaPreview: criteria,
         },
         response: {
           model: response.model,

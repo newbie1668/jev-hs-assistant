@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import type { AssignmentRecord } from "@/lib/assignments";
 import { goodsTextForClassification } from "@/lib/hs/stated-codes";
-import type { HsSuggestion } from "@/lib/hs/types";
+import type { LineItemSuggestion } from "@/lib/hs/types";
 import { SAMPLE_DOCUMENTS } from "@/lib/samples";
 import { type DecisionTrace } from "@/lib/typesafe/trace";
 import { AgentTrail } from "@/components/agent-trail";
@@ -177,7 +177,8 @@ export function HsAssistant() {
   const [text, setText] = useState(SAMPLE_DOCUMENTS[0]!.text);
   const [sampleId, setSampleId] = useState(SAMPLE_DOCUMENTS[0]!.id);
   const [meta, setMeta] = useState<MetaResponse | null>(null);
-  const [suggestion, setSuggestion] = useState<HsSuggestion | null>(null);
+  const [items, setItems] = useState<LineItemSuggestion[]>([]);
+  const [selectedItem, setSelectedItem] = useState(0);
   const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -193,7 +194,7 @@ export function HsAssistant() {
   const [traceHistory, setTraceHistory] = useState<
     Array<{ query: string; latencyMs: number }>
   >([]);
-  const [assignedHs, setAssignedHs] = useState<string | null>(null);
+  const [assignedHs, setAssignedHs] = useState<Record<number, string>>({});
   const [centerTab, setCenterTab] = useState<CenterTab>("fields");
   const [lineFilter, setLineFilter] = useState<LineFilter>("all");
   const [headersOpen, setHeadersOpen] = useState(true);
@@ -206,8 +207,11 @@ export function HsAssistant() {
 
   const fields = useMemo(() => parseDoc(text), [text]);
 
-  /** HS is Missing until a human assigns a draft for this document. */
-  const hsMissing = !assignedHs;
+  /** The suggestion under review: selected goods line, or nothing before Suggest. */
+  const suggestion = items[selectedItem]?.suggestion ?? null;
+
+  /** HS is Missing until a human assigns a draft for this goods line. */
+  const hsMissing = !assignedHs[selectedItem];
   const lineHasException = hsMissing || !fields.origin || !fields.qty;
 
   const headerFieldCount = 10;
@@ -224,8 +228,14 @@ export function HsAssistant() {
     fields.weight,
   ].filter(Boolean).length;
 
-  const linesTotal = 1;
-  const linesComplete = assignedHs && fields.description ? 1 : 0;
+  const linesTotal = Math.max(items.length, 1);
+  const linesComplete = items.filter((it) => assignedHs[it.index]).length;
+  const exceptionCount =
+    items.length > 0
+      ? items.filter((it) => !assignedHs[it.index]).length
+      : lineHasException
+        ? 1
+        : 0;
 
   function publishTrace(trace: DecisionTrace, queryLabel: string) {
     if (activeTrace) {
@@ -270,30 +280,73 @@ export function HsAssistant() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Suggest failed");
-      const s = data.suggestion as HsSuggestion;
-      setSuggestion(s);
-      if (data.trace) {
-        publishTrace(
-          data.trace as DecisionTrace,
-          text.trim().slice(0, 100) || "suggest_hs",
-        );
-      }
+      const newItems = (data.items ?? [
+        {
+          index: 0,
+          lineText: text,
+          suggestion: data.suggestion,
+          trace: data.trace,
+        },
+      ]) as LineItemSuggestion[];
+      setItems(newItems);
+      setSelectedItem(0);
+
+      const labels = newItems.map(
+        (it) => `line ${it.index + 1}: ${it.lineText.slice(0, 60)}`,
+      );
+      const priorEntries = newItems.slice(1).map((it) => ({
+        query: labels[it.index]!,
+        latencyMs: it.trace.totalLatencyMs,
+      }));
+      setTraceHistory((h) =>
+        [
+          ...(activeTrace
+            ? [
+                {
+                  query: traceQuery || activeTrace.operation,
+                  latencyMs: activeTrace.totalLatencyMs,
+                },
+              ]
+            : []),
+          ...priorEntries,
+          ...h,
+        ].slice(0, 4),
+      );
+      setActiveTrace(newItems[0]!.trace);
+      setTraceQuery(labels[0]!);
+
       setCenterTab("lines");
-      if (s.verification?.passed === false || s.confidence < 0.3) {
-        const reason =
-          s.verification?.passed === false
-            ? "verification failed"
-            : "low confidence";
+      const anyFail = newItems.some(
+        (it) =>
+          it.suggestion.verification?.passed === false ||
+          it.suggestion.confidence < 0.3,
+      );
+      const mode = newItems[0]!.suggestion.judgmentMode;
+      if (newItems.length > 1) {
         setStatus(
-          `Suggested ${s.hscode} via ${s.judgmentMode} (${reason}) — review carefully before assigning.`,
+          `Suggested ${newItems.length} line items via ${mode} — select a line to review/assign.` +
+            (anyFail
+              ? " Low-confidence on at least one line (verification failed) — review carefully before assigning."
+              : ""),
         );
       } else {
-        setStatus(
-          `Suggested ${s.hscode} via ${s.judgmentMode}. Assign to clear Missing.`,
-        );
+        const s = newItems[0]!.suggestion;
+        if (anyFail) {
+          const reason =
+            s.verification?.passed === false
+              ? "verification failed"
+              : "low confidence";
+          setStatus(
+            `Suggested ${s.hscode} via ${s.judgmentMode} (${reason}) — review carefully before assigning.`,
+          );
+        } else {
+          setStatus(
+            `Suggested ${s.hscode} via ${s.judgmentMode}. Assign to clear Missing.`,
+          );
+        }
       }
     } catch (e) {
-      setSuggestion(null);
+      setItems([]);
       setError(e instanceof Error ? e.message : "Suggest failed");
     } finally {
       setLoadingSuggest(false);
@@ -309,7 +362,7 @@ export function HsAssistant() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           hscode: suggestion.hscode,
-          documentText: text,
+          documentText: items[selectedItem]?.lineText ?? text,
           confidence: suggestion.confidence,
           humanConfirmed: true,
         }),
@@ -317,7 +370,7 @@ export function HsAssistant() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Assign failed");
       setAssignments((prev) => [data.assignment as AssignmentRecord, ...prev]);
-      setAssignedHs(suggestion.hscode);
+      setAssignedHs((prev) => ({ ...prev, [selectedItem]: suggestion.hscode }));
       if (data.trace) {
         publishTrace(
           data.trace as DecisionTrace,
@@ -393,15 +446,17 @@ export function HsAssistant() {
     setSampleId(id);
     setText(sample.text);
     setDocLabel(sample.title);
-    setSuggestion(null);
-    setAssignedHs(null);
+    setItems([]);
+    setSelectedItem(0);
+    setAssignedHs({});
     setError(null);
     setStatus(`Sample: ${sample.title}`);
   }
 
   function resetClassification() {
-    setSuggestion(null);
-    setAssignedHs(null);
+    setItems([]);
+    setSelectedItem(0);
+    setAssignedHs({});
   }
 
   async function ingestUploadedFile(file: File) {
@@ -482,7 +537,7 @@ export function HsAssistant() {
   const showLine =
     lineFilter === "all" || (lineFilter === "exceptions" && lineHasException);
 
-  const displayHs = assignedHs ?? suggestion?.hscode ?? null;
+  const displayHs = assignedHs[selectedItem] ?? suggestion?.hscode ?? null;
   const sampleSelectValue =
     sampleId || (docLabel ? "__uploaded__" : SAMPLE_DOCUMENTS[0]!.id);
 
@@ -717,7 +772,7 @@ export function HsAssistant() {
                           : "h-7 rounded-full bg-[#eceae3]/90 px-2.5 text-[12px] text-[#0d0d0d]"
                       }
                     >
-                      Exceptions {lineHasException ? 1 : 0}
+                      Exceptions {exceptionCount}
                     </button>
                     <button
                       type="button"
@@ -730,8 +785,9 @@ export function HsAssistant() {
                       className="ml-auto text-[12px] text-[#807d73] hover:text-[#0d0d0d]"
                       onClick={() => {
                         setLineFilter("all");
-                        setSuggestion(null);
-                        setAssignedHs(null);
+                        setItems([]);
+                        setSelectedItem(0);
+                        setAssignedHs({});
                         setStatus(null);
                       }}
                     >
@@ -751,7 +807,109 @@ export function HsAssistant() {
                         </tr>
                       </thead>
                       <tbody>
-                        {showLine ? (
+                        {items.length > 0 ? (
+                          items.filter(
+                            (it) =>
+                              lineFilter === "all" || !assignedHs[it.index],
+                          ).length === 0 ? (
+                            <tr>
+                              <td
+                                colSpan={5}
+                                className="px-3 py-8 text-center text-[#807d73]"
+                              >
+                                No exceptions in the current filter.
+                              </td>
+                            </tr>
+                          ) : (
+                            items.map((item) => {
+                              const i = item.index;
+                              const missing = !assignedHs[i];
+                              if (lineFilter === "exceptions" && !missing) {
+                                return null;
+                              }
+                              const itemFailed =
+                                item.suggestion.verification?.passed === false;
+                              return (
+                                <tr
+                                  key={i}
+                                  onClick={() => {
+                                    setSelectedItem(i);
+                                    setActiveTrace(item.trace);
+                                    setTraceQuery(
+                                      `line ${i + 1}: ${item.lineText.slice(0, 60)}`,
+                                    );
+                                  }}
+                                  className={`cursor-pointer border-b border-white/30 last:border-0 ${
+                                    i === selectedItem ? "bg-white/40" : ""
+                                  }`}
+                                >
+                                  <td className="px-3 py-3 align-top text-[#0d0d0d]">
+                                    {fields.origin ?? (
+                                      <span className="relative inline-flex rounded bg-[#f3e8ff] px-1.5 py-0.5 font-medium text-[#7c3aed]">
+                                        Missing
+                                        <span
+                                          aria-hidden
+                                          className="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-[#7c3aed] border-l-transparent"
+                                        />
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="max-w-[220px] px-3 py-3 align-top text-[#0d0d0d]">
+                                    <span className="line-clamp-2">
+                                      {item.lineText}
+                                    </span>
+                                  </td>
+                                  <td className="px-3 py-3 align-top">
+                                    {missing ? (
+                                      <span className="relative inline-flex items-center rounded bg-[#f3e8ff] px-2 py-0.5 font-medium text-[#7c3aed]">
+                                        Missing
+                                        <span
+                                          aria-hidden
+                                          className="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-[#7c3aed] border-l-transparent"
+                                        />
+                                      </span>
+                                    ) : (
+                                      <span className="font-mono font-semibold text-[#0d0d0d]">
+                                        {assignedHs[i]}
+                                      </span>
+                                    )}
+                                    {missing && (
+                                      <p
+                                        className={`mt-1 font-mono text-[10px] ${
+                                          itemFailed
+                                            ? "text-amber-800"
+                                            : "text-[#807d73]"
+                                        }`}
+                                      >
+                                        suggested {item.suggestion.hscode} ·{" "}
+                                        {pct(item.suggestion.confidence)}
+                                        {itemFailed ? " · verify fail" : ""}
+                                      </p>
+                                    )}
+                                  </td>
+                                  <td className="px-3 py-3 align-top text-[#0d0d0d]">
+                                    {items.length === 1
+                                      ? (fields.qty ?? (
+                                          <span className="text-[#7c3aed]">
+                                            Missing
+                                          </span>
+                                        ))
+                                      : "—"}
+                                  </td>
+                                  <td className="px-3 py-3 align-top text-[#0d0d0d]">
+                                    {items.length === 1
+                                      ? (fields.amount ?? (
+                                          <span className="text-[#7c3aed]">
+                                            Missing
+                                          </span>
+                                        ))
+                                      : "—"}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )
+                        ) : showLine ? (
                           <tr className="border-b border-white/30 last:border-0">
                             <td className="px-3 py-3 align-top text-[#0d0d0d]">
                               {fields.origin ?? (
@@ -819,6 +977,9 @@ export function HsAssistant() {
                     <div className="mt-4 space-y-2 rounded-xl border border-white/45 bg-white/30 p-3 backdrop-blur-md">
                       <p className="text-[11px] font-medium tracking-wide text-[#807d73] uppercase">
                         Path · HS {suggestion.datasetVersion}
+                        {items.length > 1
+                          ? ` · Line ${selectedItem + 1} of ${items.length}`
+                          : ""}
                       </p>
                       <ol className="space-y-1">
                         {suggestion.path.map((step) => (

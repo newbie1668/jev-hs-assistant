@@ -43,8 +43,7 @@
  {"id":"silver-jewellery","group":"misc","text":"Description of goods: Silver jewellery (sterling silver 925 necklaces and rings)\nQuantity: 600 pcs","expect":["711311"]},
  {"id":"mugs","group":"ceramics","text":"Description of goods: Porcelain coffee mugs 350ml, packed in cardboard gift boxes\nQuantity: 12000 pcs","expect":["691110"]},
  {"id":"yoga-mat","group":"plastics","text":"Description of goods: Yoga mats of cellular PVC foam, 6mm, 183x61cm\nQuantity: 2000 pcs","expect":["392112","950691"]},
-
- {"id":"edge-multi-line","group":"edge","text":"COMMERCIAL INVOICE\nDescription: Wireless Headphones (HS 8518.30.20) x200\nDescription: Bluetooth Speakers (HS 8518.22.00) x150\nDescription: USB-C Charging Docks (HS 8504.40.82) x100\nTotal: USD 21,150.00","expect":["851830","851822","850440"],"note":"multi-item invoice; app returns a single HS6"},
+ {"id":"edge-multi-line","group":"edge","text":"COMMERCIAL INVOICE\nDescription: Wireless Headphones (HS 8518.30.20) x200\nDescription: Bluetooth Speakers (HS 8518.22.00) x150\nDescription: USB-C Charging Docks (HS 8504.40.82) x100\nTotal: USD 21,150.00","expect":["851830","851822","850440"],"note":"multi-item invoice; app returns a single HS6","expectPerLine":[["851830"],["851821","851822"],["850440"]]},
  {"id":"edge-wrong-printed-hs","group":"edge","text":"Description of goods: Men's cotton T-shirts, knitted, 100% cotton\nHS Code: 8471.30\nQuantity: 3000 pcs","expect":["610910"],"note":"printed HS is wrong; must ignore and flag"},
  {"id":"edge-fruit-trap","group":"edge","text":"Description of goods: Blackberry jam, 340g glass jars\nQuantity: 2400 jars","expect":["200799"]},
  {"id":"edge-brand-trap","group":"edge","text":"Description of goods: Apple AirTag item trackers, Bluetooth, 4-pack\nQuantity: 1000 packs","expect":["851762","852692","851769"],"note":"ambiguous; HS4 8517 or 8526 acceptable"},
@@ -55,5 +54,6 @@
  {"id":"edge-parts-vs-whole","group":"edge","text":"Description of goods: Empty plastic housings (enclosures) for smartphones, ABS, no electronics\nQuantity: 20000 pcs","expect":["851779","392690"]},
  {"id":"edge-packaging-only","group":"edge","text":"Description of goods: Corrugated cardboard shipping boxes, printed, folded flat\nQuantity: 50000 pcs","expect":["481910"]},
  {"id":"edge-service","group":"edge","text":"Description: Software consulting services - 40 hours\nTotal: USD 7,000","expect":[],"note":"not goods; expect low confidence / failed verification"},
- {"id":"edge-mixed-materials","group":"edge","text":"Description of goods: Glass storage jars with bamboo lids, 1L, for kitchen use\nQuantity: 4000 pcs","expect":["701349","701342","701399"]}
+ {"id":"edge-mixed-materials","group":"edge","text":"Description of goods: Glass storage jars with bamboo lids, 1L, for kitchen use\nQuantity: 4000 pcs","expect":["701349","701342","701399"]},
+ {"id":"edge-numbered-list","group":"edge","text":"PACKING LIST\n1. Stainless steel hex bolts M8x40, 5000 pcs\n2. Frozen shrimp, peeled, 10 kg cartons, 200 ctn\n3. Men's cotton T-shirts knitted, 1200 pcs","expect":["731815","030617","610910"],"expectPerLine":[["731815"],["030617"],["610910"]]}
 ]

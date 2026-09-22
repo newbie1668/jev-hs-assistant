@@ -15,11 +15,25 @@ for (const c of cases) {
   });
   const j = await r.json();
   const s = j.suggestion;
-  const got = s?.hscode ?? null;
-  const hs6 = c.expect.includes(got);
-  const hs4 = c.expect.some((e) => got && e.slice(0, 4) === got.slice(0, 4));
-  const hs2 = c.expect.some((e) => got && e.slice(0, 2) === got.slice(0, 2));
-  const grade = c.expect.length === 0 ? "n/a" : hs6 ? "HS6" : hs4 ? "HS4" : hs2 ? "HS2" : "MISS";
+  let got, grade;
+  if (c.expectPerLine) {
+    const items = j.items ?? [];
+    got = items.map((it) => it.suggestion?.hscode ?? "?").join("+") || null;
+    const all = (n) =>
+      items.length === c.expectPerLine.length &&
+      items.every((it, i) =>
+        c.expectPerLine[i].some(
+          (e) => it.suggestion?.hscode?.slice(0, n) === e.slice(0, n),
+        ),
+      );
+    grade = all(6) ? "HS6" : all(4) ? "HS4" : all(2) ? "HS2" : "MISS";
+  } else {
+    got = s?.hscode ?? null;
+    const hs6 = c.expect.includes(got);
+    const hs4 = c.expect.some((e) => got && e.slice(0, 4) === got.slice(0, 4));
+    const hs2 = c.expect.some((e) => got && e.slice(0, 2) === got.slice(0, 2));
+    grade = c.expect.length === 0 ? "n/a" : hs6 ? "HS6" : hs4 ? "HS4" : hs2 ? "HS2" : "MISS";
+  }
   rows.push({
     id: c.id, group: c.group, expect: c.expect.join("|"), got, grade,
     desc: s?.description?.slice(0, 60) ?? j.error,
