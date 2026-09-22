@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import type { AssignmentRecord } from "@/lib/assignments";
+import { goodsTextForClassification } from "@/lib/hs/stated-codes";
 import type { HsSuggestion } from "@/lib/hs/types";
 import { SAMPLE_DOCUMENTS } from "@/lib/samples";
 import { type DecisionTrace } from "@/lib/typesafe/trace";
@@ -66,16 +67,31 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
+/** Whitespace before an inline meta label — cuts a captured value short. */
+const INLINE_META_RE =
+  /\s+(?=\b(?:Qty|Quantity|COUNTRY\s+OF\s+ORIGIN|ORIGIN|HARMONIS[E]?D\s+CODE|HARMONIZED\s+CODE|HS\s*CODE|HS\s*#|UNIT\s+VALUE|UNIT\s+PRICE|NET\s+WEIGHT|GROSS\s+WEIGHT)\b)/i;
+
 function parseDoc(text: string): ParsedDocFields {
   const grab = (re: RegExp): string | null => {
     const m = text.match(re);
     return m?.[1]?.trim() || null;
   };
 
+  // Like grab, but trims the captured value at the first inline meta label.
+  const grabField = (re: RegExp): string | null => {
+    const m = text.match(re);
+    const value = m?.[1]?.split(INLINE_META_RE)[0]?.trim();
+    return value || null;
+  };
+
   const description =
-    grab(/Description of goods:\s*([^\n]+)/i) ||
-    grab(/Contents:\s*([^\n]+)/i) ||
-    grab(/Commodity:\s*([^\n]+)/i);
+    grabField(/Description of goods:\s*([^\n]+)/i) ||
+    grabField(/Contents:\s*([^\n]+)/i) ||
+    grabField(/Commodity:\s*([^\n]+)/i) ||
+    (() => {
+      const goods = goodsTextForClassification(text);
+      return goods && goods.length < 200 ? goods : null;
+    })();
 
   return {
     mode: grab(/Mode:\s*([^\n]+)/i) || (text.includes("BILL OF LADING") ? "Ocean" : "Air"),
@@ -89,18 +105,19 @@ function parseDoc(text: string): ParsedDocFields {
       grab(/Invoice No:\s*([^\n]+)/i) ||
       grab(/Shipment:\s*([^\n]+)/i),
     origin:
-      grab(/Country of origin:\s*([^\n]+)/i) ||
-      grab(/Origin:\s*([^\n]+)/i),
+      grabField(/Country of origin:\s*([^\n]+)/i) ||
+      grabField(/Origin:\s*([^\n]+)/i),
     description,
     qty:
-      grab(/Quantity:\s*([^\n]+)/i) ||
-      grab(/(\d[\d,]*)\s*units?/i) ||
+      grabField(/Quantity:\s*([^\n]+)/i) ||
+      grab(/\bQty:?\s*(\d[\d,]*)/i) ||
+      grab(/(\d[\d,]*)\s*(?:units|unit)\b(?!\s+(?:value|price))/i) ||
       grab(/(\d[\d,]*)\s*pcs/i) ||
       grab(/(\d[\d,]*)\s*bags/i),
-    amount: grab(/(?:Amount|Value):\s*([^\n]+)/i),
+    amount: grabField(/(?:Amount|Value|UNIT\s+VALUE):\s*([^\n]+)/i),
     weight:
-      grab(/Net weight:\s*([^\n]+)/i) ||
-      grab(/Gross weight:\s*([^\n]+)/i),
+      grabField(/Net weight:\s*([^\n]+)/i) ||
+      grabField(/Gross weight:\s*([^\n]+)/i),
   };
 }
 
@@ -253,7 +270,8 @@ export function HsAssistant() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Suggest failed");
-      setSuggestion(data.suggestion as HsSuggestion);
+      const s = data.suggestion as HsSuggestion;
+      setSuggestion(s);
       if (data.trace) {
         publishTrace(
           data.trace as DecisionTrace,
@@ -261,9 +279,19 @@ export function HsAssistant() {
         );
       }
       setCenterTab("lines");
-      setStatus(
-        `Suggested ${(data.suggestion as HsSuggestion).hscode} via ${(data.suggestion as HsSuggestion).judgmentMode}. Assign to clear Missing.`,
-      );
+      if (s.verification?.passed === false || s.confidence < 0.3) {
+        const reason =
+          s.verification?.passed === false
+            ? "verification failed"
+            : "low confidence";
+        setStatus(
+          `Suggested ${s.hscode} via ${s.judgmentMode} (${reason}) — review carefully before assigning.`,
+        );
+      } else {
+        setStatus(
+          `Suggested ${s.hscode} via ${s.judgmentMode}. Assign to clear Missing.`,
+        );
+      }
     } catch (e) {
       setSuggestion(null);
       setError(e instanceof Error ? e.message : "Suggest failed");
@@ -459,7 +487,7 @@ export function HsAssistant() {
     sampleId || (docLabel ? "__uploaded__" : SAMPLE_DOCUMENTS[0]!.id);
 
   return (
-    <div className="mx-auto flex h-[min(920px,calc(100vh-2.5rem))] w-full max-w-[1400px] flex-col overflow-hidden rounded-[28px] border border-white/50 bg-white/30 shadow-[0_24px_80px_-20px_rgba(13,13,13,0.45),inset_0_1px_0_rgba(255,255,255,0.65)] backdrop-blur-[40px] backdrop-saturate-150">
+    <div className="mx-auto flex h-[min(920px,calc(100vh-2.5rem))] w-full max-w-[1400px] flex-col overflow-y-auto rounded-[28px] border border-white/50 bg-white/30 shadow-[0_24px_80px_-20px_rgba(13,13,13,0.45),inset_0_1px_0_rgba(255,255,255,0.65)] backdrop-blur-[40px] backdrop-saturate-150 lg:overflow-hidden">
       {/* Window chrome */}
       <header className="relative flex shrink-0 items-center gap-3 border-b border-white/40 px-4 py-2.5">
         <div className="flex items-center gap-1.5" aria-hidden>
@@ -510,6 +538,7 @@ export function HsAssistant() {
           suggestionHs={suggestion?.hscode ?? null}
           suggestionDescription={suggestion?.description ?? null}
           suggestionConfidence={suggestion?.confidence ?? null}
+          suggestionVerification={suggestion?.verification ?? null}
           documentStated={suggestion?.documentStated ?? null}
           command={command}
           onCommandChange={setCommand}
@@ -606,8 +635,8 @@ export function HsAssistant() {
               </p>
             </div>
 
-            {(centerTab === "fields" || true) && (
-              <div className={centerTab === "lines" ? "mb-6" : "mb-2"}>
+            {centerTab === "fields" && (
+              <div className="mb-2">
                 <button
                   type="button"
                   className="mb-3 flex items-center gap-1.5 text-[13px] font-medium text-[#0d0d0d]"
@@ -651,7 +680,8 @@ export function HsAssistant() {
               </div>
             )}
 
-            <div className={centerTab === "fields" ? "mt-6" : ""}>
+            {centerTab === "lines" && (
+            <div>
               <button
                 type="button"
                 className="mb-3 flex items-center gap-1.5 text-[13px] font-medium text-[#0d0d0d]"
@@ -701,6 +731,8 @@ export function HsAssistant() {
                       onClick={() => {
                         setLineFilter("all");
                         setSuggestion(null);
+                        setAssignedHs(null);
+                        setStatus(null);
                       }}
                     >
                       Clear
@@ -805,6 +837,18 @@ export function HsAssistant() {
                           </li>
                         ))}
                       </ol>
+                      {suggestion.verification && (
+                        <p
+                          className={
+                            suggestion.verification.passed
+                              ? "text-[11px] text-[#807d73]"
+                              : "text-[11px] font-medium text-amber-800"
+                          }
+                        >
+                          Verification {pct(suggestion.verification.matchProbability)} ·{" "}
+                          {suggestion.verification.passed ? "pass" : "fail"}
+                        </p>
+                      )}
                       {suggestion.runnerUp && (
                         <p className="text-[11px] text-[#807d73]">
                           Runner-up{" "}
@@ -837,12 +881,13 @@ export function HsAssistant() {
                 </>
               )}
             </div>
+            )}
           </div>
         </section>
 
         {/* Right — document preview */}
         <aside
-          className="relative hidden min-h-0 flex-col bg-white/15 backdrop-blur-[24px] lg:flex"
+          className="relative flex min-h-0 flex-col bg-white/15 backdrop-blur-[24px]"
           onDragEnter={onDocDragEnter}
           onDragLeave={onDocDragLeave}
           onDragOver={onDocDragOver}

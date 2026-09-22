@@ -10,12 +10,14 @@ import {
   getJudgmentMode,
 } from "@/lib/typesafe/judgments";
 import { TraceCollector } from "@/lib/typesafe/trace";
+import { invalidJsonResponse, readJsonBody } from "@/lib/api/json-body";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { utterance?: string };
+    const body = await readJsonBody<{ utterance?: string }>(request);
+    if (!body) return invalidJsonResponse();
     const utterance = body.utterance?.trim() ?? "";
     if (!utterance) {
       return NextResponse.json(

@@ -216,17 +216,19 @@ export async function suggestHsCode(
     });
     if (unfinished.length === 0) break;
 
-    const expanded: BeamCandidate[] = [];
-    for (const candidate of unfinished) {
-      const kids = await expandCandidate(
-        taxonomy,
-        client,
-        classifyText,
-        candidate,
-        goodsPrior,
-      );
-      expanded.push(...kids);
-    }
+    const expanded = (
+      await Promise.all(
+        unfinished.map((candidate) =>
+          expandCandidate(
+            taxonomy,
+            client,
+            classifyText,
+            candidate,
+            goodsPrior,
+          ),
+        ),
+      )
+    ).flat();
     // Keep finished leaves from previous beam
     const finished = beam.filter((c) => {
       if (c.pathCodes.length === 0) return false;
@@ -269,12 +271,6 @@ export async function suggestHsCode(
   const leaf = getNode(taxonomy, leafCode);
   if (!leaf) {
     throw new Error(`Invalid HS code produced: ${leafCode}`);
-  }
-
-  // Never invent — validate existence and prefer HS6
-  if (leaf.level !== HS6_LEVEL) {
-    // If we stopped early at a non-HS6, try to continue greedily if children exist
-    // but still only pick legal children from the tree.
   }
 
   const path: HsPathStep[] = buildAncestryPath(taxonomy, leafCode).map(

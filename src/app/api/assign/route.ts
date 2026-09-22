@@ -3,6 +3,7 @@ import type { AssignmentRecord } from "@/lib/assignments";
 import { isLegalHs6, loadHsTaxonomy, getNode } from "@/lib/hs/taxonomy";
 import { HS_DATASET_VERSION } from "@/lib/hs/types";
 import { getJudgmentMode } from "@/lib/typesafe/judgments";
+import { invalidJsonResponse, readJsonBody } from "@/lib/api/json-body";
 import {
   TraceCollector,
   costFieldsForStep,
@@ -28,12 +29,13 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as {
+    const body = await readJsonBody<{
       hscode?: string;
       documentText?: string;
       confidence?: number;
       humanConfirmed?: boolean;
-    };
+    }>(request);
+    if (!body) return invalidJsonResponse();
 
     if (!body.humanConfirmed) {
       return NextResponse.json(

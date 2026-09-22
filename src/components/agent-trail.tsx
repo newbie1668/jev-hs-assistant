@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   formatLatency,
@@ -16,6 +16,7 @@ interface AgentTrailProps {
   suggestionHs?: string | null;
   suggestionDescription?: string | null;
   suggestionConfidence?: number | null;
+  suggestionVerification?: { matchProbability: number; passed: boolean } | null;
   documentStated?: {
     rawDigits: string;
     hs6: string;
@@ -223,6 +224,7 @@ export function AgentTrail({
   suggestionHs,
   suggestionDescription,
   suggestionConfidence,
+  suggestionVerification = null,
   documentStated = null,
   command,
   onCommandChange,
@@ -329,6 +331,18 @@ export function AgentTrail({
                 {suggestionConfidence != null && (
                   <p className="mt-1 text-[11px] text-[#807d73]">
                     {(suggestionConfidence * 100).toFixed(0)}%+ confidence
+                  </p>
+                )}
+                {suggestionVerification && (
+                  <p
+                    className={
+                      suggestionVerification.passed
+                        ? "mt-1 text-[11px] text-[#807d73]"
+                        : "mt-1 text-[11px] font-medium text-amber-800"
+                    }
+                  >
+                    Verification {(suggestionVerification.matchProbability * 100).toFixed(0)}% ·{" "}
+                    {suggestionVerification.passed ? "pass" : "fail"}
                   </p>
                 )}
               </div>
