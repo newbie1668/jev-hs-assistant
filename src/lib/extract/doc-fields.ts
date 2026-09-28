@@ -10,6 +10,8 @@ export interface ParsedDocFields {
   buyer: string | null;
   invoiceNo: string | null;
   origin: string | null;
+  /** Origin given as its own field line, not inline on a goods line. */
+  headerOrigin: string | null;
   description: string | null;
   qty: string | null;
   amount: string | null;
@@ -52,8 +54,13 @@ function parseQty(text: string): string | null {
     grabField(text, /Quantity:\s*([^\n]+)/i) ||
     grab(text, /\bQty:?\s*(\d[\d,]*)/i) ||
     grab(text, /(\d[\d,]*)\s*(?:units|unit)\b(?!\s+(?:value|price))/i) ||
-    grab(text, /(\d[\d,]*)\s*pcs/i) ||
-    grab(text, /(\d[\d,]*)\s*bags/i)
+    grab(
+      text,
+      /(\d[\d,]*)\s*(?:pcs|pieces|sets|pairs|ctns?|cartons|boxes|pkgs|packages|rolls)\b/i,
+    ) ||
+    grab(text, /(\d[\d,]*)\s*bags/i) ||
+    // Trailing "… x200" only — not "10 x 20 cm" or model names like "Sony X90 TV".
+    grab(text, /(?:^|\s)[x×](\d[\d,]*)(?=\s*(?:[,;]|$))/m)
   );
 }
 
@@ -85,6 +92,10 @@ export function parseDoc(text: string): ParsedDocFields {
     invoiceNo:
       grab(text, /Invoice No:\s*([^\n]+)/i) || grab(text, /Shipment:\s*([^\n]+)/i),
     origin: parseOrigin(text),
+    headerOrigin: grabField(
+      text,
+      /^\s*(?:Country\s+of\s+origin|Origin)\s*:\s*([^\n]+)/im,
+    ),
     description,
     qty: parseQty(text),
     amount: parseAmount(text),
@@ -97,7 +108,7 @@ export function parseDoc(text: string): ParsedDocFields {
 /**
  * Per-line entry fields. On a multi-line document, qty / value come from the
  * line only (a document-level match would belong to another line); origin
- * falls back to the header since invoices often state it once.
+ * falls back to one stated outside the goods lines, never to another line's.
  */
 export function parseLineFields(
   lineText: string,
@@ -119,7 +130,7 @@ export function parseLineFields(
   }
   return {
     description,
-    origin: parseOrigin(lineText) ?? doc.origin,
+    origin: parseOrigin(lineText) ?? doc.headerOrigin,
     qty: parseQty(lineText),
     amount: parseAmount(lineText),
   };

@@ -149,6 +149,39 @@ describe("parseLineFields", () => {
     assert.equal(tees.qty, "1,500");
   });
 
+  it("never borrows another line's origin; falls back to a header origin", () => {
+    const inline = [
+      "COMMERCIAL INVOICE",
+      "Description: Wireless headphones Qty 200 COUNTRY OF ORIGIN: TW",
+      "Description: Bluetooth speakers Qty 150",
+    ].join("\n");
+    const inlineDoc = parseDoc(inline);
+    const [first, second] = extractGoodsLines(inline);
+    assert.equal(parseLineFields(first!, inlineDoc, true).origin, "TW");
+    assert.equal(parseLineFields(second!, inlineDoc, true).origin, null);
+
+    const header = [
+      "COMMERCIAL INVOICE",
+      "Country of origin: CN",
+      "Description: Wireless headphones Qty 200",
+      "Description: Bluetooth speakers Qty 150",
+    ].join("\n");
+    const headerDoc = parseDoc(header);
+    for (const line of extractGoodsLines(header)) {
+      assert.equal(parseLineFields(line, headerDoc, true).origin, "CN");
+    }
+  });
+
+  it("reads x200 and carton quantities used in the eval fixtures", () => {
+    const qty = (line: string) => parseLineFields(line, doc, true).qty;
+    assert.equal(qty("Description: Wireless Headphones (HS 8518.30.20) x200"), "200");
+    assert.equal(qty("2. Frozen shrimp, peeled, 10 kg cartons, 200 ctn"), "200");
+    assert.equal(qty("1. Stainless steel hex bolts M8x40, 5000 pcs"), "5000");
+    assert.equal(qty("Description: Ceramic tiles 30 x 60 cm"), null);
+    assert.equal(qty("Description: Sony Bravia X90 television"), null);
+    assert.equal(qty("Description: Studio speakers model x100 pair"), null);
+  });
+
   it("uses the goods description, not the whole document, on single-line docs", () => {
     const laptop = SAMPLE_DOCUMENTS.find((s) => s.id === "laptop")!;
     const f = parseLineFields(laptop.text, parseDoc(laptop.text), false);

@@ -72,6 +72,12 @@ function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
+/** "Commercial invoice — portable computers" → "Portable computers" (the doc type shows in the preview). */
+function sampleLabel(title: string): string {
+  const subject = title.split("—")[1]?.trim();
+  return subject ? subject[0]!.toUpperCase() + subject.slice(1) : title;
+}
+
 function reviewRows(
   items: LineItemSuggestion[],
   doc: ParsedDocFields,
@@ -91,8 +97,11 @@ function downloadJson(fileName: string, data: unknown) {
   const a = document.createElement("a");
   a.href = url;
   a.download = fileName;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  a.remove();
+  // Revoke later — Safari can cancel a download whose blob URL is revoked synchronously.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 function Sparkle({ className }: { className?: string }) {
@@ -1173,7 +1182,7 @@ export function HsAssistant() {
                 if (v === "__uploaded__") return;
                 loadSample(v);
               }}
-              className="max-w-[58%] truncate rounded-md border-0 bg-transparent text-[13px] font-medium text-[#0d0d0d] outline-none"
+              className="min-w-0 flex-1 truncate rounded-md border-0 bg-transparent text-[13px] font-medium text-[#0d0d0d] outline-none"
               aria-label="Document source"
             >
               {!sampleId && (
@@ -1183,7 +1192,7 @@ export function HsAssistant() {
               )}
               {SAMPLE_DOCUMENTS.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.title.split("—")[0]?.trim()}
+                  {sampleLabel(s.title)}
                 </option>
               ))}
             </select>
