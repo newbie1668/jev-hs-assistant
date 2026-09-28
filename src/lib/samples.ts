@@ -2,10 +2,27 @@ export interface SampleDocument {
   id: string;
   title: string;
   expectedHs6Hint?: string;
+  /** Multi-line documents: expected HS6 per goods line, in order. */
+  expectedLines?: string[];
   text: string;
 }
 
 export const SAMPLE_DOCUMENTS: SampleDocument[] = [
+  {
+    id: "mixed-invoice",
+    title: "Commercial invoice — 4-line mixed consignment",
+    expectedLines: ["847130", "090121", "610910", "900691"],
+    text: `COMMERCIAL INVOICE
+Seller: Harbour Trade Supplies Ltd
+Buyer: Contoso Retail GmbH
+Invoice No: INV-2026-9120
+Mode: Air
+Description: Portable automatic data processing machines (14-inch business laptops) Qty 20 COUNTRY OF ORIGIN: TW UNIT VALUE: 780.00
+Description: Roasted coffee, not decaffeinated, 1 kg retail bags Qty 400 COUNTRY OF ORIGIN: BR UNIT VALUE: 14.50
+Description: Men's T-shirts, knitted, of cotton, crew neck Qty 1,500 COUNTRY OF ORIGIN: BD UNIT VALUE: 3.20
+Description: Fujifilm X-T2 40M/130FT Underwater housing kit Qty 12 COUNTRY OF ORIGIN: HK HARMONISED CODE: HS#85171200 UNIT VALUE: 389.99
+Net weight: 612 kg`,
+  },
   {
     id: "laptop",
     title: "Commercial invoice — portable computers",

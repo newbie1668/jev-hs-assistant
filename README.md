@@ -52,6 +52,10 @@ npm start   # production server on the same port after build
 
 Paste into the preview textarea still works. Sample invoices in the dropdown remain for a quick mock path — try **Commercial invoice — camera underwater housing** (Fujifilm housing kit with a wrong printed `HS#85171200`).
 
+**Review by exception:** every classified line gets a status — **Ready** (verified ≥ 75%, no near-tie, printed HS agrees, origin / qty / value present) or **Needs review** with the reason: printed HS disagrees, printed HS not in HS 2022 (e.g. an outdated HS 2017 code like `8517.12`), verification failed / weak, close alternative, or a missing entry field. **Approve N ready** assigns all clean lines in one human click; the **Exceptions** filter leaves only what needs a broker. Each line has a plain-English **Why this code** rationale and broker overrides (assign runner-up / keep printed code). Once every line is assigned, **Export entry draft** downloads a JSON customs entry draft (header, per-line HS6, origin, qty, value, overrides, open flags) — the hand-off to a filing system. Post stays blocked. Logic lives in `src/lib/review/`.
+
+The default sample, **Commercial invoice — 4-line mixed consignment**, shows the whole flow: three lines come back Ready, the camera housing is flagged because the supplier printed `HS#85171200`.
+
 **Multi-item documents:** when a document has several goods lines (`Description:`/`Item:` lines, inline blobs, or a numbered/bulleted list), it's split into up to 8 lines and each line is classified independently. The Lines tab shows one row per line — click a line to review its path, verification, and printed-code comparison, then Assign draft per line.
 
 Unsupported binaries (or empty OCR / scanned PDFs with no text layer) return a clear error — paste the shipment text as a fallback.

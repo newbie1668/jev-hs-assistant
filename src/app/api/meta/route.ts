@@ -16,6 +16,7 @@ export async function GET() {
       id: s.id,
       title: s.title,
       expectedHs6Hint: s.expectedHs6Hint,
+      expectedLines: s.expectedLines,
     })),
   });
 }

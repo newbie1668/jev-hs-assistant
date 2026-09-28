@@ -328,12 +328,7 @@ export function AgentTrail({
                 <p className="mt-0.5 text-[12px] leading-snug text-[#66645c]">
                   {suggestionDescription}
                 </p>
-                {suggestionConfidence != null && (
-                  <p className="mt-1 text-[11px] text-[#807d73]">
-                    {(suggestionConfidence * 100).toFixed(0)}%+ confidence
-                  </p>
-                )}
-                {suggestionVerification && (
+                {suggestionVerification ? (
                   <p
                     className={
                       suggestionVerification.passed
@@ -341,9 +336,15 @@ export function AgentTrail({
                         : "mt-1 text-[11px] font-medium text-amber-800"
                     }
                   >
-                    Verification {(suggestionVerification.matchProbability * 100).toFixed(0)}% ·{" "}
+                    Verified match {(suggestionVerification.matchProbability * 100).toFixed(0)}% ·{" "}
                     {suggestionVerification.passed ? "pass" : "fail"}
                   </p>
+                ) : (
+                  suggestionConfidence != null && (
+                    <p className="mt-1 text-[11px] text-[#807d73]">
+                      Path confidence {(suggestionConfidence * 100).toFixed(0)}%
+                    </p>
+                  )
                 )}
               </div>
               {documentStated && (
