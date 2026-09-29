@@ -7,12 +7,22 @@ import {
   useState,
   useTransition,
   type DragEvent,
-  type ReactNode,
 } from "react";
 import { Button } from "@/components/ui/button";
 import type { AssignmentRecord } from "@/lib/assignments";
-import { goodsTextForClassification } from "@/lib/hs/stated-codes";
+import {
+  parseDoc,
+  parseLineFields,
+  type LineFields,
+  type ParsedDocFields,
+} from "@/lib/extract/doc-fields";
 import type { LineItemSuggestion } from "@/lib/hs/types";
+import { buildEntryDraft } from "@/lib/review/entry-draft";
+import {
+  assessLine,
+  buildRationale,
+  type LineAssessment,
+} from "@/lib/review/exceptions";
 import { SAMPLE_DOCUMENTS } from "@/lib/samples";
 import { type DecisionTrace } from "@/lib/typesafe/trace";
 import { AgentTrail } from "@/components/agent-trail";
@@ -47,78 +57,51 @@ interface CommandResponse {
 type CenterTab = "fields" | "lines";
 type LineFilter = "all" | "exceptions";
 
-interface ParsedDocFields {
-  mode: string | null;
-  vessel: string | null;
-  voyageNo: string | null;
-  shipmentDate: string | null;
-  masterBill: string | null;
-  seller: string | null;
-  buyer: string | null;
-  invoiceNo: string | null;
-  origin: string | null;
-  description: string | null;
-  qty: string | null;
-  amount: string | null;
-  weight: string | null;
+interface AssignedHs {
+  hscode: string;
+  description: string;
+}
+
+interface ReviewRow {
+  item: LineItemSuggestion;
+  fields: LineFields;
+  assessment: LineAssessment;
 }
 
 function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
 }
 
-/** Whitespace before an inline meta label — cuts a captured value short. */
-const INLINE_META_RE =
-  /\s+(?=\b(?:Qty|Quantity|COUNTRY\s+OF\s+ORIGIN|ORIGIN|HARMONIS[E]?D\s+CODE|HARMONIZED\s+CODE|HS\s*CODE|HS\s*#|UNIT\s+VALUE|UNIT\s+PRICE|NET\s+WEIGHT|GROSS\s+WEIGHT)\b)/i;
+/** "Commercial invoice — portable computers" → "Portable computers" (the doc type shows in the preview). */
+function sampleLabel(title: string): string {
+  const subject = title.split("—")[1]?.trim();
+  return subject ? subject[0]!.toUpperCase() + subject.slice(1) : title;
+}
 
-function parseDoc(text: string): ParsedDocFields {
-  const grab = (re: RegExp): string | null => {
-    const m = text.match(re);
-    return m?.[1]?.trim() || null;
-  };
+function reviewRows(
+  items: LineItemSuggestion[],
+  doc: ParsedDocFields,
+): ReviewRow[] {
+  const multiLine = items.length > 1;
+  return items.map((item) => {
+    const fields = parseLineFields(item.lineText, doc, multiLine);
+    return { item, fields, assessment: assessLine(item.suggestion, fields) };
+  });
+}
 
-  // Like grab, but trims the captured value at the first inline meta label.
-  const grabField = (re: RegExp): string | null => {
-    const m = text.match(re);
-    const value = m?.[1]?.split(INLINE_META_RE)[0]?.trim();
-    return value || null;
-  };
-
-  const description =
-    grabField(/Description of goods:\s*([^\n]+)/i) ||
-    grabField(/Contents:\s*([^\n]+)/i) ||
-    grabField(/Commodity:\s*([^\n]+)/i) ||
-    (() => {
-      const goods = goodsTextForClassification(text);
-      return goods && goods.length < 200 ? goods : null;
-    })();
-
-  return {
-    mode: grab(/Mode:\s*([^\n]+)/i) || (text.includes("BILL OF LADING") ? "Ocean" : "Air"),
-    vessel: grab(/Vessel:\s*([^\n]+)/i),
-    voyageNo: grab(/Voyage(?:\s*No\.?)?:\s*([^\n]+)/i),
-    shipmentDate: grab(/(?:Shipment Date|Date):\s*([^\n]+)/i),
-    masterBill: grab(/(?:Master Bill|B\/L|BOL)[:\s#-]*([A-Z0-9-]+)/i),
-    seller: grab(/Seller:\s*([^\n]+)/i),
-    buyer: grab(/Buyer:\s*([^\n]+)/i),
-    invoiceNo:
-      grab(/Invoice No:\s*([^\n]+)/i) ||
-      grab(/Shipment:\s*([^\n]+)/i),
-    origin:
-      grabField(/Country of origin:\s*([^\n]+)/i) ||
-      grabField(/Origin:\s*([^\n]+)/i),
-    description,
-    qty:
-      grabField(/Quantity:\s*([^\n]+)/i) ||
-      grab(/\bQty:?\s*(\d[\d,]*)/i) ||
-      grab(/(\d[\d,]*)\s*(?:units|unit)\b(?!\s+(?:value|price))/i) ||
-      grab(/(\d[\d,]*)\s*pcs/i) ||
-      grab(/(\d[\d,]*)\s*bags/i),
-    amount: grabField(/(?:Amount|Value|UNIT\s+VALUE):\s*([^\n]+)/i),
-    weight:
-      grabField(/Net weight:\s*([^\n]+)/i) ||
-      grabField(/Gross weight:\s*([^\n]+)/i),
-  };
+function downloadJson(fileName: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoke later — Safari can cancel a download whose blob URL is revoked synchronously.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 function Sparkle({ className }: { className?: string }) {
@@ -165,10 +148,41 @@ function FieldCell({
   );
 }
 
-function ValuePill({ children }: { children: ReactNode }) {
+function MissingTag() {
   return (
-    <span className="inline-flex h-7 items-center rounded-full bg-[#eceae3]/90 px-2.5 text-[12px] text-[#0d0d0d]">
-      {children}
+    <span className="relative inline-flex items-center rounded bg-[#f3e8ff] px-1.5 py-0.5 font-medium text-[#7c3aed]">
+      Missing
+      <span
+        aria-hidden
+        className="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-[#7c3aed] border-l-transparent"
+      />
+    </span>
+  );
+}
+
+function StatusPill({
+  assigned,
+  override,
+  inReview,
+  status,
+}: {
+  assigned: boolean;
+  override: boolean;
+  inReview: boolean;
+  status: LineAssessment["status"];
+}) {
+  const [label, tone] = assigned
+    ? [override ? "Assigned · override" : "Assigned", "bg-[#0d0d0d] text-white"]
+    : inReview
+      ? ["In review", "bg-sky-100 text-sky-900"]
+      : status === "ready"
+        ? ["Ready", "bg-emerald-100 text-emerald-900"]
+        : ["Needs review", "bg-amber-100 text-amber-900"];
+  return (
+    <span
+      className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${tone}`}
+    >
+      {label}
     </span>
   );
 }
@@ -179,14 +193,15 @@ export function HsAssistant() {
   const [meta, setMeta] = useState<MetaResponse | null>(null);
   const [items, setItems] = useState<LineItemSuggestion[]>([]);
   const [selectedItem, setSelectedItem] = useState(0);
-  const [assignments, setAssignments] = useState<AssignmentRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [command, setCommand] = useState("");
   const [commandResult, setCommandResult] = useState<CommandResponse | null>(
     null,
   );
-  const [reviewQueued, setReviewQueued] = useState(false);
+  const [reviewRequested, setReviewRequested] = useState<
+    Record<number, boolean>
+  >({});
   const [isPending, startTransition] = useTransition();
   const [loadingSuggest, setLoadingSuggest] = useState(false);
   const [activeTrace, setActiveTrace] = useState<DecisionTrace | null>(null);
@@ -194,7 +209,10 @@ export function HsAssistant() {
   const [traceHistory, setTraceHistory] = useState<
     Array<{ query: string; latencyMs: number }>
   >([]);
-  const [assignedHs, setAssignedHs] = useState<Record<number, string>>({});
+  const [assignedHs, setAssignedHs] = useState<Record<number, AssignedHs>>(
+    {},
+  );
+  const [assigning, setAssigning] = useState(false);
   const [centerTab, setCenterTab] = useState<CenterTab>("fields");
   const [lineFilter, setLineFilter] = useState<LineFilter>("all");
   const [headersOpen, setHeadersOpen] = useState(true);
@@ -207,8 +225,12 @@ export function HsAssistant() {
 
   const fields = useMemo(() => parseDoc(text), [text]);
 
+  /** Per-line entry fields + exception flags (review-by-exception). */
+  const rows = useMemo(() => reviewRows(items, fields), [items, fields]);
+
   /** The suggestion under review: selected goods line, or nothing before Suggest. */
   const suggestion = items[selectedItem]?.suggestion ?? null;
+  const selectedRow = rows[selectedItem] ?? null;
 
   /** HS is Missing until a human assigns a draft for this goods line. */
   const hsMissing = !assignedHs[selectedItem];
@@ -230,12 +252,26 @@ export function HsAssistant() {
 
   const linesTotal = Math.max(items.length, 1);
   const linesComplete = items.filter((it) => assignedHs[it.index]).length;
+  /** Unassigned lines a human must look at; ready lines can be bulk-approved. */
+  const isException = (row: ReviewRow) =>
+    !assignedHs[row.item.index] &&
+    (row.assessment.status === "needs_review" ||
+      Boolean(reviewRequested[row.item.index]));
+  const exceptionRows = rows.filter(isException);
+  const readyRows = rows.filter(
+    (r) => !assignedHs[r.item.index] && !isException(r),
+  );
   const exceptionCount =
-    items.length > 0
-      ? items.filter((it) => !assignedHs[it.index]).length
-      : lineHasException
-        ? 1
-        : 0;
+    items.length > 0 ? exceptionRows.length : lineHasException ? 1 : 0;
+  const allAssigned = items.length > 0 && linesComplete === items.length;
+  const workflowStatus =
+    items.length === 0
+      ? "To do"
+      : allAssigned
+        ? "Ready to file"
+        : exceptionRows.length > 0
+          ? "Needs review"
+          : "Ready for approval";
 
   function publishTrace(trace: DecisionTrace, queryLabel: string) {
     if (activeTrace) {
@@ -257,11 +293,6 @@ export function HsAssistant() {
         const res = await fetch("/api/meta");
         const data = (await res.json()) as MetaResponse;
         setMeta(data);
-        const asg = await fetch("/api/assign");
-        const asgData = (await asg.json()) as {
-          assignments: AssignmentRecord[];
-        };
-        setAssignments(asgData.assignments);
       } catch {
         setError("Could not load taxonomy metadata.");
       }
@@ -316,34 +347,33 @@ export function HsAssistant() {
       setTraceQuery(labels[0]!);
 
       setCenterTab("lines");
-      const anyFail = newItems.some(
-        (it) =>
-          it.suggestion.verification?.passed === false ||
-          it.suggestion.confidence < 0.3,
+      setLineFilter("all");
+      const assessed = reviewRows(newItems, fields);
+      const flagged = assessed.filter(
+        (r) => r.assessment.status === "needs_review",
       );
       const mode = newItems[0]!.suggestion.judgmentMode;
-      if (newItems.length > 1) {
+      const lead =
+        newItems.length > 1
+          ? `Classified ${newItems.length} lines via ${mode}`
+          : `Suggested ${newItems[0]!.suggestion.hscode} via ${mode}`;
+      if (flagged.length === 0) {
         setStatus(
-          `Suggested ${newItems.length} line items via ${mode} — select a line to review/assign.` +
-            (anyFail
-              ? " Low-confidence on at least one line (verification failed) — review carefully before assigning."
-              : ""),
+          `${lead} — no exceptions. Approve to assign draft${newItems.length > 1 ? "s" : ""}.`,
         );
       } else {
-        const s = newItems[0]!.suggestion;
-        if (anyFail) {
-          const reason =
-            s.verification?.passed === false
-              ? "verification failed"
-              : "low confidence";
-          setStatus(
-            `Suggested ${s.hscode} via ${s.judgmentMode} (${reason}) — review carefully before assigning.`,
-          );
-        } else {
-          setStatus(
-            `Suggested ${s.hscode} via ${s.judgmentMode}. Assign to clear Missing.`,
-          );
-        }
+        const reasons = [
+          ...new Set(
+            flagged.flatMap((r) =>
+              r.assessment.exceptions
+                .filter((e) => e.severity === "review")
+                .map((e) => e.title),
+            ),
+          ),
+        ];
+        setStatus(
+          `${lead} — ${newItems.length - flagged.length} ready, ${flagged.length} need${flagged.length === 1 ? "s" : ""} review (${reasons.join(", ")}).`,
+        );
       }
     } catch (e) {
       setItems([]);
@@ -353,41 +383,98 @@ export function HsAssistant() {
     }
   }
 
-  async function assignDraft() {
-    if (!suggestion) return;
+  /** Human-confirmed draft assignment of one line (suggested code or an override). */
+  async function assignLine(index: number, hscode: string): Promise<boolean> {
+    const item = items[index];
+    if (!item) return false;
     setError(null);
     try {
       const res = await fetch("/api/assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          hscode: suggestion.hscode,
-          documentText: items[selectedItem]?.lineText ?? text,
-          confidence: suggestion.confidence,
+          hscode,
+          documentText: item.lineText,
+          confidence: item.suggestion.confidence,
           humanConfirmed: true,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Assign failed");
-      setAssignments((prev) => [data.assignment as AssignmentRecord, ...prev]);
-      setAssignedHs((prev) => ({ ...prev, [selectedItem]: suggestion.hscode }));
+      const record = data.assignment as AssignmentRecord;
+      setAssignedHs((prev) => ({
+        ...prev,
+        [index]: { hscode: record.hscode, description: record.description },
+      }));
       if (data.trace) {
-        publishTrace(
-          data.trace as DecisionTrace,
-          `assign ${suggestion.hscode}`,
-        );
+        publishTrace(data.trace as DecisionTrace, `assign ${hscode}`);
       }
-      setStatus(
-        `Draft assigned ${suggestion.hscode}. Customs Post / submit remains blocked.`,
-      );
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Assign failed");
+      return false;
     }
   }
 
+  async function assignDraft(hscode?: string) {
+    if (!suggestion) return;
+    const code = hscode ?? suggestion.hscode;
+    setAssigning(true);
+    const ok = await assignLine(selectedItem, code);
+    setAssigning(false);
+    if (!ok) return;
+    const override = code !== suggestion.hscode;
+    setStatus(
+      `Draft assigned ${code}${override ? ` (human override of ${suggestion.hscode})` : ""}${items.length > 1 ? ` on line ${selectedItem + 1}` : ""}. Customs Post / submit remains blocked.`,
+    );
+  }
+
+  /** One click approves every line with no open exceptions — still human-gated. */
+  async function approveReady() {
+    const targets = readyRows;
+    if (targets.length === 0) return;
+    setAssigning(true);
+    let done = 0;
+    for (const row of targets) {
+      if (await assignLine(row.item.index, row.item.suggestion.hscode)) done += 1;
+    }
+    setAssigning(false);
+    const left = exceptionRows.length;
+    setStatus(
+      `Approved ${done} ready line${done === 1 ? "" : "s"}.` +
+        (left > 0
+          ? ` ${left} exception${left === 1 ? "" : "s"} left for review.`
+          : " All lines assigned — export the entry draft."),
+    );
+  }
+
   async function requestReview() {
-    setReviewQueued(true);
-    setStatus("Queued for human review. No code assigned.");
+    setReviewRequested((prev) => ({ ...prev, [selectedItem]: true }));
+    setStatus(
+      `${items.length > 1 ? `Line ${selectedItem + 1}` : "Shipment"} sent to a senior broker for review. No code assigned.`,
+    );
+  }
+
+  function exportEntryDraft() {
+    if (!allAssigned) {
+      setStatus("Assign every line before exporting the entry draft.");
+      return;
+    }
+    const draft = buildEntryDraft(
+      fields,
+      rows.map((r) => ({
+        lineNo: r.item.index + 1,
+        fields: r.fields,
+        suggestion: r.item.suggestion,
+        assigned: assignedHs[r.item.index]!,
+        exceptions: r.assessment.exceptions,
+      })),
+    );
+    const ref = (fields.invoiceNo ?? "shipment").replace(/[^\w-]+/g, "_");
+    downloadJson(`entry-draft-${ref}.json`, draft);
+    setStatus(
+      `Entry draft exported (${draft.lines.length} line${draft.lines.length === 1 ? "" : "s"}). Not filed — Post stays with the broker.`,
+    );
   }
 
   async function runCommand() {
@@ -423,15 +510,7 @@ export function HsAssistant() {
       } else if (cmd === "open_shipment") {
         setStatus("Shipment workspace focused (mock).");
       } else if (cmd === "prepare_declaration_draft") {
-        if (assignments.length === 0) {
-          setStatus(
-            "Assign an HS6 draft before preparing a declaration draft.",
-          );
-        } else {
-          setStatus(
-            `Local declaration draft prepared for ${assignments[0]!.hscode}. Filing is out of scope.`,
-          );
-        }
+        exportEntryDraft();
       } else if (cmd === "submit_declaration") {
         setStatus(data.gate.message);
       }
@@ -446,9 +525,7 @@ export function HsAssistant() {
     setSampleId(id);
     setText(sample.text);
     setDocLabel(sample.title);
-    setItems([]);
-    setSelectedItem(0);
-    setAssignedHs({});
+    resetClassification();
     setError(null);
     setStatus(`Sample: ${sample.title}`);
   }
@@ -457,6 +534,7 @@ export function HsAssistant() {
     setItems([]);
     setSelectedItem(0);
     setAssignedHs({});
+    setReviewRequested({});
   }
 
   async function ingestUploadedFile(file: File) {
@@ -537,7 +615,6 @@ export function HsAssistant() {
   const showLine =
     lineFilter === "all" || (lineFilter === "exceptions" && lineHasException);
 
-  const displayHs = assignedHs[selectedItem] ?? suggestion?.hscode ?? null;
   const sampleSelectValue =
     sampleId || (docLabel ? "__uploaded__" : SAMPLE_DOCUMENTS[0]!.id);
 
@@ -563,8 +640,16 @@ export function HsAssistant() {
             ETA —
           </span>
           <span className="hidden items-center gap-1.5 text-[12px] text-[#66645c] md:inline-flex">
-            <span className="size-1.5 rounded-full bg-[#807d73]" />
-            To do
+            <span
+              className={`size-1.5 rounded-full ${
+                workflowStatus === "Needs review"
+                  ? "bg-amber-500"
+                  : workflowStatus === "To do"
+                    ? "bg-[#807d73]"
+                    : "bg-emerald-500"
+              }`}
+            />
+            {workflowStatus}
           </span>
           {meta && (
             <span className="hidden rounded-full border border-white/50 bg-white/40 px-2 py-0.5 font-mono text-[10px] text-[#66645c] lg:inline">
@@ -641,28 +726,59 @@ export function HsAssistant() {
               >
                 {loadingSuggest || isPending ? "Classifying…" : "Suggest HS6"}
               </Button>
+              {readyRows.length > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={assigning}
+                  title="Assign every line with no open exceptions (human-confirmed)"
+                  onClick={() => void approveReady()}
+                  className="bg-emerald-700 text-white hover:bg-emerald-800"
+                >
+                  Approve {readyRows.length} ready
+                </Button>
+              )}
               <Button
                 type="button"
                 size="sm"
                 variant="secondary"
-                disabled={!suggestion}
+                disabled={!suggestion || assigning || !hsMissing}
                 onClick={() => void assignDraft()}
               >
-                Assign draft
+                {selectedRow?.assessment.status === "needs_review" && hsMissing
+                  ? "Override & assign"
+                  : "Assign draft"}
               </Button>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
+                disabled={items.length === 0 || !hsMissing}
                 onClick={() => void requestReview()}
               >
                 Request review
               </Button>
+              {items.length > 0 && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={!allAssigned}
+                  title={
+                    allAssigned
+                      ? "Download the customs entry draft (JSON) for your filing system"
+                      : "Assign every line first"
+                  }
+                  onClick={exportEntryDraft}
+                >
+                  Export entry draft
+                </Button>
+              )}
             </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            {(status || error || commandResult || reviewQueued) && (
+            {(status || error || commandResult) && (
               <p
                 className={`mb-3 text-[12px] ${error ? "text-red-700" : "text-[#66645c]"}`}
                 role="status"
@@ -672,9 +788,6 @@ export function HsAssistant() {
                   (commandResult
                     ? `${commandResult.routed.command} · ${pct(commandResult.routed.confidence)} — ${commandResult.gate.message}`
                     : null)}
-                {reviewQueued && !error && !status
-                  ? " Human review requested."
-                  : null}
               </p>
             )}
 
@@ -749,9 +862,6 @@ export function HsAssistant() {
               {linesOpen && (
                 <>
                   <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <ValuePill>
-                      Group by <span className="ml-1 text-[#807d73]">▾</span>
-                    </ValuePill>
                     <button
                       type="button"
                       onClick={() => setLineFilter("all")}
@@ -774,20 +884,18 @@ export function HsAssistant() {
                     >
                       Exceptions {exceptionCount}
                     </button>
-                    <button
-                      type="button"
-                      className="h-7 rounded-full border border-[#ccc9ba]/80 bg-white/40 px-2.5 text-[12px] text-[#66645c]"
-                    >
-                      + Filter
-                    </button>
+                    {items.length > 0 && (
+                      <span className="text-[11px] text-[#807d73]">
+                        {linesComplete} assigned · {readyRows.length} ready ·{" "}
+                        {exceptionRows.length} to review
+                      </span>
+                    )}
                     <button
                       type="button"
                       className="ml-auto text-[12px] text-[#807d73] hover:text-[#0d0d0d]"
                       onClick={() => {
                         setLineFilter("all");
-                        setItems([]);
-                        setSelectedItem(0);
-                        setAssignedHs({});
+                        resetClassification();
                         setStatus(null);
                       }}
                     >
@@ -796,7 +904,7 @@ export function HsAssistant() {
                   </div>
 
                   <div className="overflow-x-auto rounded-xl border border-white/45 bg-white/25 backdrop-blur-md">
-                    <table className="w-full min-w-[520px] border-collapse text-left text-[12px]">
+                    <table className="w-full min-w-[600px] border-collapse text-left text-[12px]">
                       <thead>
                         <tr className="border-b border-white/40 text-[11px] text-[#807d73]">
                           <th className="px-3 py-2.5 font-medium">Origin</th>
@@ -804,31 +912,35 @@ export function HsAssistant() {
                           <th className="px-3 py-2.5 font-medium">HS Code</th>
                           <th className="px-3 py-2.5 font-medium">Qty</th>
                           <th className="px-3 py-2.5 font-medium">Amount</th>
+                          <th className="px-3 py-2.5 font-medium">Status</th>
                         </tr>
                       </thead>
                       <tbody>
                         {items.length > 0 ? (
-                          items.filter(
-                            (it) =>
-                              lineFilter === "all" || !assignedHs[it.index],
-                          ).length === 0 ? (
+                          lineFilter === "exceptions" &&
+                          exceptionRows.length === 0 ? (
                             <tr>
                               <td
-                                colSpan={5}
+                                colSpan={6}
                                 className="px-3 py-8 text-center text-[#807d73]"
                               >
-                                No exceptions in the current filter.
+                                No exceptions — every open line is ready to
+                                approve.
                               </td>
                             </tr>
                           ) : (
-                            items.map((item) => {
+                            rows.map((row) => {
+                              const { item, fields: lf, assessment } = row;
                               const i = item.index;
-                              const missing = !assignedHs[i];
-                              if (lineFilter === "exceptions" && !missing) {
+                              const assigned = assignedHs[i];
+                              if (lineFilter === "exceptions" && !isException(row)) {
                                 return null;
                               }
-                              const itemFailed =
-                                item.suggestion.verification?.passed === false;
+                              const flags = assessment.exceptions.filter(
+                                (e) => e.severity === "review",
+                              );
+                              const match =
+                                item.suggestion.verification?.matchProbability;
                               return (
                                 <tr
                                   key={i}
@@ -844,66 +956,51 @@ export function HsAssistant() {
                                   }`}
                                 >
                                   <td className="px-3 py-3 align-top text-[#0d0d0d]">
-                                    {fields.origin ?? (
-                                      <span className="relative inline-flex rounded bg-[#f3e8ff] px-1.5 py-0.5 font-medium text-[#7c3aed]">
-                                        Missing
-                                        <span
-                                          aria-hidden
-                                          className="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-[#7c3aed] border-l-transparent"
-                                        />
-                                      </span>
-                                    )}
+                                    {lf.origin ?? <MissingTag />}
                                   </td>
                                   <td className="max-w-[220px] px-3 py-3 align-top text-[#0d0d0d]">
                                     <span className="line-clamp-2">
-                                      {item.lineText}
+                                      {lf.description}
                                     </span>
+                                    {!assigned && flags.length > 0 && (
+                                      <p className="mt-1 text-[10px] text-amber-800">
+                                        ⚠ {flags.map((e) => e.title).join(" · ")}
+                                      </p>
+                                    )}
                                   </td>
                                   <td className="px-3 py-3 align-top">
-                                    {missing ? (
-                                      <span className="relative inline-flex items-center rounded bg-[#f3e8ff] px-2 py-0.5 font-medium text-[#7c3aed]">
-                                        Missing
-                                        <span
-                                          aria-hidden
-                                          className="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-[#7c3aed] border-l-transparent"
-                                        />
+                                    {assigned ? (
+                                      <span className="font-mono font-semibold text-[#0d0d0d]">
+                                        {assigned.hscode}
                                       </span>
                                     ) : (
-                                      <span className="font-mono font-semibold text-[#0d0d0d]">
-                                        {assignedHs[i]}
-                                      </span>
+                                      <MissingTag />
                                     )}
-                                    {missing && (
-                                      <p
-                                        className={`mt-1 font-mono text-[10px] ${
-                                          itemFailed
-                                            ? "text-amber-800"
-                                            : "text-[#807d73]"
-                                        }`}
-                                      >
-                                        suggested {item.suggestion.hscode} ·{" "}
-                                        {pct(item.suggestion.confidence)}
-                                        {itemFailed ? " · verify fail" : ""}
+                                    {!assigned && (
+                                      <p className="mt-1 font-mono text-[10px] text-[#807d73]">
+                                        suggested {item.suggestion.hscode}
+                                        {match !== undefined
+                                          ? ` · match ${pct(match)}`
+                                          : ""}
                                       </p>
                                     )}
                                   </td>
                                   <td className="px-3 py-3 align-top text-[#0d0d0d]">
-                                    {items.length === 1
-                                      ? (fields.qty ?? (
-                                          <span className="text-[#7c3aed]">
-                                            Missing
-                                          </span>
-                                        ))
-                                      : "—"}
+                                    {lf.qty ?? <MissingTag />}
                                   </td>
                                   <td className="px-3 py-3 align-top text-[#0d0d0d]">
-                                    {items.length === 1
-                                      ? (fields.amount ?? (
-                                          <span className="text-[#7c3aed]">
-                                            Missing
-                                          </span>
-                                        ))
-                                      : "—"}
+                                    {lf.amount ?? <MissingTag />}
+                                  </td>
+                                  <td className="px-3 py-3 align-top">
+                                    <StatusPill
+                                      assigned={Boolean(assigned)}
+                                      override={
+                                        Boolean(assigned) &&
+                                        assigned!.hscode !== item.suggestion.hscode
+                                      }
+                                      inReview={Boolean(reviewRequested[i])}
+                                      status={assessment.status}
+                                    />
                                   </td>
                                 </tr>
                               );
@@ -912,15 +1009,7 @@ export function HsAssistant() {
                         ) : showLine ? (
                           <tr className="border-b border-white/30 last:border-0">
                             <td className="px-3 py-3 align-top text-[#0d0d0d]">
-                              {fields.origin ?? (
-                                <span className="relative inline-flex rounded bg-[#f3e8ff] px-1.5 py-0.5 font-medium text-[#7c3aed]">
-                                  Missing
-                                  <span
-                                    aria-hidden
-                                    className="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-[#7c3aed] border-l-transparent"
-                                  />
-                                </span>
-                              )}
+                              {fields.origin ?? <MissingTag />}
                             </td>
                             <td className="max-w-[220px] px-3 py-3 align-top text-[#0d0d0d]">
                               <span className="line-clamp-2">
@@ -928,41 +1017,22 @@ export function HsAssistant() {
                               </span>
                             </td>
                             <td className="px-3 py-3 align-top">
-                              {hsMissing ? (
-                                <span className="relative inline-flex items-center rounded bg-[#f3e8ff] px-2 py-0.5 font-medium text-[#7c3aed]">
-                                  Missing
-                                  <span
-                                    aria-hidden
-                                    className="absolute top-0 right-0 size-0 border-t-[8px] border-l-[8px] border-t-[#7c3aed] border-l-transparent"
-                                  />
-                                </span>
-                              ) : (
-                                <span className="font-mono font-semibold text-[#0d0d0d]">
-                                  {displayHs}
-                                </span>
-                              )}
-                              {suggestion && hsMissing && (
-                                <p className="mt-1 font-mono text-[10px] text-[#807d73]">
-                                  suggested {suggestion.hscode} ·{" "}
-                                  {pct(suggestion.confidence)}
-                                </p>
-                              )}
+                              <MissingTag />
                             </td>
                             <td className="px-3 py-3 align-top text-[#0d0d0d]">
-                              {fields.qty ?? (
-                                <span className="text-[#7c3aed]">Missing</span>
-                              )}
+                              {fields.qty ?? <MissingTag />}
                             </td>
                             <td className="px-3 py-3 align-top text-[#0d0d0d]">
-                              {fields.amount ?? (
-                                <span className="text-[#7c3aed]">Missing</span>
-                              )}
+                              {fields.amount ?? <MissingTag />}
+                            </td>
+                            <td className="px-3 py-3 align-top text-[11px] text-[#807d73]">
+                              Not classified
                             </td>
                           </tr>
                         ) : (
                           <tr>
                             <td
-                              colSpan={5}
+                              colSpan={6}
                               className="px-3 py-8 text-center text-[#807d73]"
                             >
                               No exceptions in the current filter.
@@ -973,14 +1043,29 @@ export function HsAssistant() {
                     </table>
                   </div>
 
-                  {suggestion && (
-                    <div className="mt-4 space-y-2 rounded-xl border border-white/45 bg-white/30 p-3 backdrop-blur-md">
-                      <p className="text-[11px] font-medium tracking-wide text-[#807d73] uppercase">
-                        Path · HS {suggestion.datasetVersion}
-                        {items.length > 1
-                          ? ` · Line ${selectedItem + 1} of ${items.length}`
-                          : ""}
-                      </p>
+                  {suggestion && selectedRow && (
+                    <div className="mt-4 space-y-3 rounded-xl border border-white/45 bg-white/30 p-3 backdrop-blur-md">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <p className="text-[11px] font-medium tracking-wide text-[#807d73] uppercase">
+                          Path · HS {suggestion.datasetVersion}
+                          {items.length > 1
+                            ? ` · Line ${selectedItem + 1} of ${items.length}`
+                            : ""}
+                        </p>
+                        {suggestion.verification && (
+                          <p
+                            className={
+                              suggestion.verification.passed
+                                ? "text-[11px] text-[#807d73]"
+                                : "text-[11px] font-medium text-amber-800"
+                            }
+                          >
+                            Verified match{" "}
+                            {pct(suggestion.verification.matchProbability)} ·{" "}
+                            {suggestion.verification.passed ? "pass" : "fail"}
+                          </p>
+                        )}
+                      </div>
                       <ol className="space-y-1">
                         {suggestion.path.map((step) => (
                           <li
@@ -998,54 +1083,80 @@ export function HsAssistant() {
                           </li>
                         ))}
                       </ol>
-                      {suggestion.verification && (
-                        <p
-                          className={
-                            suggestion.verification.passed
-                              ? "text-[11px] text-[#807d73]"
-                              : "text-[11px] font-medium text-amber-800"
-                          }
-                        >
-                          Verification {pct(suggestion.verification.matchProbability)} ·{" "}
-                          {suggestion.verification.passed ? "pass" : "fail"}
-                        </p>
+
+                      {selectedRow.assessment.exceptions.length > 0 && (
+                        <ul className="space-y-1.5">
+                          {selectedRow.assessment.exceptions.map((e) => (
+                            <li
+                              key={e.code}
+                              className={
+                                e.severity === "review"
+                                  ? "rounded-lg border border-amber-400/50 bg-amber-50/70 px-2.5 py-1.5 text-[11px] text-amber-900"
+                                  : "rounded-lg border border-white/50 bg-white/40 px-2.5 py-1.5 text-[11px] text-[#66645c]"
+                              }
+                            >
+                              <span className="font-medium">{e.title}</span> —{" "}
+                              {e.detail}
+                            </li>
+                          ))}
+                        </ul>
                       )}
-                      {suggestion.verificationRerank && (
-                        <p className="text-[11px] text-[#807d73]">
-                          Reranked from{" "}
-                          <span className="font-mono">
-                            {suggestion.verificationRerank.from}
-                          </span>
-                          : beam top failed verification
+
+                      <div className="rounded-lg bg-white/45 px-3 py-2.5">
+                        <p className="mb-1.5 text-[11px] font-medium tracking-wide text-[#807d73] uppercase">
+                          Why this code
                         </p>
-                      )}
-                      {suggestion.runnerUp && (
-                        <p className="text-[11px] text-[#807d73]">
-                          Runner-up{" "}
-                          <span className="font-mono">
-                            {suggestion.runnerUp.hscode}
-                          </span>
-                        </p>
-                      )}
-                      {suggestion.documentStated && (
-                        <p
-                          className={
-                            suggestion.documentStated.disagreesWithSuggestion
-                              ? "text-[11px] text-amber-800"
-                              : "text-[11px] text-[#807d73]"
-                          }
-                        >
-                          Document states{" "}
-                          <span className="font-mono">
-                            {suggestion.documentStated.rawDigits}
-                          </span>
-                          {" "}
-                          (HS6 {suggestion.documentStated.hs6})
-                          {suggestion.documentStated.disagreesWithSuggestion
-                            ? " — disagrees with description-based suggestion"
-                            : ""}
-                        </p>
-                      )}
+                        <ul className="list-disc space-y-1 pl-4 text-[12px] leading-snug text-[#3a3a38]">
+                          {buildRationale(
+                            suggestion,
+                            selectedRow.fields.description,
+                          ).map((line) => (
+                            <li key={line}>{line}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      {hsMissing &&
+                        (suggestion.runnerUp ||
+                          (suggestion.documentStated?.inTaxonomy &&
+                            suggestion.documentStated.disagreesWithSuggestion)) && (
+                          <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#807d73]">
+                            <span>Broker override:</span>
+                            {suggestion.runnerUp && (
+                              <button
+                                type="button"
+                                disabled={assigning}
+                                onClick={() =>
+                                  void assignDraft(suggestion.runnerUp!.hscode)
+                                }
+                                className="h-7 rounded-full border border-[#ccc9ba]/80 bg-white/50 px-2.5 text-[#0d0d0d] hover:bg-white/80"
+                              >
+                                Assign runner-up{" "}
+                                <span className="font-mono">
+                                  {suggestion.runnerUp.hscode}
+                                </span>
+                              </button>
+                            )}
+                            {suggestion.documentStated?.inTaxonomy &&
+                              suggestion.documentStated.disagreesWithSuggestion && (
+                                <button
+                                  type="button"
+                                  disabled={assigning}
+                                  onClick={() =>
+                                    void assignDraft(
+                                      suggestion.documentStated!.hs6,
+                                    )
+                                  }
+                                  className="h-7 rounded-full border border-[#ccc9ba]/80 bg-white/50 px-2.5 text-[#0d0d0d] hover:bg-white/80"
+                                >
+                                  Keep printed{" "}
+                                  <span className="font-mono">
+                                    {suggestion.documentStated.hs6}
+                                  </span>
+                                </button>
+                              )}
+                          </div>
+                        )}
                     </div>
                   )}
                 </>
@@ -1071,7 +1182,7 @@ export function HsAssistant() {
                 if (v === "__uploaded__") return;
                 loadSample(v);
               }}
-              className="max-w-[58%] truncate rounded-md border-0 bg-transparent text-[13px] font-medium text-[#0d0d0d] outline-none"
+              className="min-w-0 flex-1 truncate rounded-md border-0 bg-transparent text-[13px] font-medium text-[#0d0d0d] outline-none"
               aria-label="Document source"
             >
               {!sampleId && (
@@ -1081,7 +1192,7 @@ export function HsAssistant() {
               )}
               {SAMPLE_DOCUMENTS.map((s) => (
                 <option key={s.id} value={s.id}>
-                  {s.title.split("—")[0]?.trim()}
+                  {sampleLabel(s.title)}
                 </option>
               ))}
             </select>
