@@ -180,7 +180,7 @@ function StatusPill({
         : ["Needs review", "bg-amber-100 text-amber-900"];
   return (
     <span
-      className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${tone}`}
+      className={`inline-flex rounded-xl px-2 py-0.5 text-[11px] leading-tight font-medium ${tone}`}
     >
       {label}
     </span>
@@ -904,15 +904,15 @@ export function HsAssistant() {
                   </div>
 
                   <div className="overflow-x-auto rounded-xl border border-white/45 bg-white/25 backdrop-blur-md">
-                    <table className="w-full min-w-[600px] border-collapse text-left text-[12px]">
+                    <table className="w-full border-collapse text-left text-[12px]">
                       <thead>
                         <tr className="border-b border-white/40 text-[11px] text-[#807d73]">
-                          <th className="px-3 py-2.5 font-medium">Origin</th>
-                          <th className="px-3 py-2.5 font-medium">Description</th>
-                          <th className="px-3 py-2.5 font-medium">HS Code</th>
-                          <th className="px-3 py-2.5 font-medium">Qty</th>
-                          <th className="px-3 py-2.5 font-medium">Amount</th>
-                          <th className="px-3 py-2.5 font-medium">Status</th>
+                          <th className="px-2 py-2.5 font-medium">Origin</th>
+                          <th className="px-2 py-2.5 font-medium">Description</th>
+                          <th className="px-2 py-2.5 font-medium">HS Code</th>
+                          <th className="px-2 py-2.5 font-medium">Qty</th>
+                          <th className="px-2 py-2.5 font-medium">Amount</th>
+                          <th className="px-2 py-2.5 font-medium">Status</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -955,10 +955,10 @@ export function HsAssistant() {
                                     i === selectedItem ? "bg-white/40" : ""
                                   }`}
                                 >
-                                  <td className="px-3 py-3 align-top text-[#0d0d0d]">
+                                  <td className="px-2 py-3 align-top text-[#0d0d0d]">
                                     {lf.origin ?? <MissingTag />}
                                   </td>
-                                  <td className="max-w-[220px] px-3 py-3 align-top text-[#0d0d0d]">
+                                  <td className="max-w-[220px] px-2 py-3 align-top text-[#0d0d0d]">
                                     <span className="line-clamp-2">
                                       {lf.description}
                                     </span>
@@ -968,7 +968,7 @@ export function HsAssistant() {
                                       </p>
                                     )}
                                   </td>
-                                  <td className="px-3 py-3 align-top">
+                                  <td className="px-2 py-3 align-top">
                                     {assigned ? (
                                       <span className="font-mono font-semibold text-[#0d0d0d]">
                                         {assigned.hscode}
@@ -978,20 +978,27 @@ export function HsAssistant() {
                                     )}
                                     {!assigned && (
                                       <p className="mt-1 font-mono text-[10px] text-[#807d73]">
-                                        suggested {item.suggestion.hscode}
-                                        {match !== undefined
-                                          ? ` · match ${pct(match)}`
-                                          : ""}
+                                        <span className="block">
+                                          suggested{" "}
+                                          <span className="whitespace-nowrap">
+                                            {item.suggestion.hscode}
+                                          </span>
+                                        </span>
+                                        {match !== undefined && (
+                                          <span className="block whitespace-nowrap">
+                                            match {pct(match)}
+                                          </span>
+                                        )}
                                       </p>
                                     )}
                                   </td>
-                                  <td className="px-3 py-3 align-top text-[#0d0d0d]">
+                                  <td className="px-2 py-3 align-top text-[#0d0d0d]">
                                     {lf.qty ?? <MissingTag />}
                                   </td>
-                                  <td className="px-3 py-3 align-top text-[#0d0d0d]">
+                                  <td className="px-2 py-3 align-top text-[#0d0d0d]">
                                     {lf.amount ?? <MissingTag />}
                                   </td>
-                                  <td className="px-3 py-3 align-top">
+                                  <td className="px-2 py-3 align-top">
                                     <StatusPill
                                       assigned={Boolean(assigned)}
                                       override={
@@ -1008,24 +1015,24 @@ export function HsAssistant() {
                           )
                         ) : showLine ? (
                           <tr className="border-b border-white/30 last:border-0">
-                            <td className="px-3 py-3 align-top text-[#0d0d0d]">
+                            <td className="px-2 py-3 align-top text-[#0d0d0d]">
                               {fields.origin ?? <MissingTag />}
                             </td>
-                            <td className="max-w-[220px] px-3 py-3 align-top text-[#0d0d0d]">
+                            <td className="max-w-[220px] px-2 py-3 align-top text-[#0d0d0d]">
                               <span className="line-clamp-2">
                                 {fields.description ?? "—"}
                               </span>
                             </td>
-                            <td className="px-3 py-3 align-top">
+                            <td className="px-2 py-3 align-top">
                               <MissingTag />
                             </td>
-                            <td className="px-3 py-3 align-top text-[#0d0d0d]">
+                            <td className="px-2 py-3 align-top text-[#0d0d0d]">
                               {fields.qty ?? <MissingTag />}
                             </td>
-                            <td className="px-3 py-3 align-top text-[#0d0d0d]">
+                            <td className="px-2 py-3 align-top text-[#0d0d0d]">
                               {fields.amount ?? <MissingTag />}
                             </td>
-                            <td className="px-3 py-3 align-top text-[11px] text-[#807d73]">
+                            <td className="px-2 py-3 align-top text-[11px] text-[#807d73]">
                               Not classified
                             </td>
                           </tr>

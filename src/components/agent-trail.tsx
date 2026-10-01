@@ -167,7 +167,7 @@ function TrailStepCard({
           </p>
         </button>
 
-        <div className="rounded-xl border border-white/60 bg-white/55 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[#3a3a38] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-md">
+        <div className="rounded-xl border border-white/60 bg-white/55 px-3 py-2.5 font-mono text-[11px] leading-relaxed text-[#3a3a38] [overflow-wrap:anywhere] shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] backdrop-blur-md">
           {toolCallText(step)}
         </div>
 
